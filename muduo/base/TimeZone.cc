@@ -1,0 +1,208 @@
+#include "muduo/base/TimeZone.h"
+#include <chrono>
+#include <filesystem>
+#include <format>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+
+using namespace muduo;
+
+struct TimeZone::Data {
+  bool fixed = false;
+  int eastOfUtc = 0;
+  const std::chrono::time_zone *zone = nullptr;
+};
+
+namespace {
+
+DateTime breakTime(std::int64_t t) {
+  using namespace std::chrono;
+  const sys_seconds tp{seconds{t}};
+  const auto day_point = floor<days>(tp);
+  const year_month_day ymd{day_point};
+  const hh_mm_ss hms{tp - day_point};
+
+  DateTime dt;
+  dt.year = static_cast<int>(ymd.year());
+  dt.month = static_cast<int>(static_cast<unsigned>(ymd.month()));
+  dt.day = static_cast<int>(static_cast<unsigned>(ymd.day()));
+  dt.hour = static_cast<int>(hms.hours().count());
+  dt.minute = static_cast<int>(hms.minutes().count());
+  dt.second = static_cast<int>(hms.seconds().count());
+  return dt;
+}
+
+const std::chrono::sys_info &pickInfo(const std::chrono::local_info &info,
+                                      bool post_transition) {
+  using std::chrono::local_info;
+  switch (info.result) {
+  case local_info::unique:
+    return info.first;
+  case local_info::nonexistent:
+    return post_transition ? info.first : info.second;
+  case local_info::ambiguous:
+    return post_transition ? info.second : info.first;
+  default:
+    throw std::runtime_error("TimeZone: unexpected local_info result");
+  }
+}
+
+std::string zoneFileToIanaName(const char *zonefile) {
+  if (zonefile == nullptr) {
+    return {};
+  }
+
+  constexpr std::string_view kPrefix = "/usr/share/zoneinfo/";
+  const std::string_view path(zonefile);
+  if (path.starts_with(kPrefix) && path.size() > kPrefix.size()) {
+    return std::string(path.substr(kPrefix.size()));
+  }
+
+  std::error_code ec;
+  const auto p = std::filesystem::path(std::string(path));
+  if (std::filesystem::is_symlink(p, ec)) {
+    const auto target = std::filesystem::read_symlink(p, ec);
+    if (!ec) {
+      const auto target_str = target.string();
+      if (std::string_view(target_str).starts_with(kPrefix) &&
+          target_str.size() > kPrefix.size()) {
+        return target_str.substr(kPrefix.size());
+      }
+    }
+  }
+
+  return {};
+}
+
+std::string zoneFileToIanaName(std::string_view zonefile) {
+  if (zonefile.empty()) {
+    return {};
+  }
+  constexpr std::string_view kPrefix = "/usr/share/zoneinfo/";
+  if (zonefile.starts_with(kPrefix) && zonefile.size() > kPrefix.size()) {
+    return std::string(zonefile.substr(kPrefix.size()));
+  }
+
+  std::error_code ec;
+  const auto p = std::filesystem::path(std::string(zonefile));
+  if (std::filesystem::is_symlink(p, ec)) {
+    const auto target = std::filesystem::read_symlink(p, ec);
+    if (!ec) {
+      const auto target_str = target.string();
+      if (std::string_view(target_str).starts_with(kPrefix) &&
+          target_str.size() > kPrefix.size()) {
+        return target_str.substr(kPrefix.size());
+      }
+    }
+  }
+
+  return {};
+}
+
+} // namespace
+
+std::string DateTime::toIsoString() const {
+  return std::format("{:4d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}", year, month,
+                     day, hour, minute, second);
+}
+
+DateTime::DateTime(const struct tm &t)
+    : year(t.tm_year + 1900), month(t.tm_mon + 1), day(t.tm_mday),
+      hour(t.tm_hour), minute(t.tm_min), second(t.tm_sec) {}
+
+TimeZone::TimeZone(std::unique_ptr<Data> data) : data_(std::move(data)) {}
+
+TimeZone::TimeZone(int eastOfUtc, const char * /*tzname*/) {
+  auto data = std::make_unique<Data>();
+  data->fixed = true;
+  data->eastOfUtc = eastOfUtc;
+  data_ = std::move(data);
+}
+
+TimeZone::TimeZone(std::string_view zoneName) : TimeZone(loadZone(zoneName)) {}
+
+TimeZone TimeZone::UTC() { return {0, "UTC"}; }
+
+TimeZone TimeZone::China() { return {8 * 3600, "CST"}; }
+
+TimeZone TimeZone::loadZone(std::string_view zoneName) {
+  if (zoneName.empty()) {
+    return {};
+  }
+
+  try {
+    auto data = std::make_unique<Data>();
+    data->zone = std::chrono::locate_zone(std::string(zoneName));
+    return TimeZone(std::move(data));
+  } catch (const std::runtime_error &) {
+    return {};
+  }
+}
+
+TimeZone TimeZone::loadZoneFile(const char *zonefile) {
+  const std::string name = zoneFileToIanaName(zonefile);
+  return loadZone(name);
+}
+
+TimeZone TimeZone::loadZoneFile(std::string_view zonefile) {
+  return loadZone(zoneFileToIanaName(zonefile));
+}
+
+DateTime TimeZone::toLocalTime(std::int64_t secondsSinceEpoch,
+                               int *utcOffset) const {
+  if (!valid()) {
+    throw std::runtime_error("TimeZone::toLocalTime: invalid timezone");
+  }
+
+  const auto sysTp =
+      std::chrono::sys_seconds{std::chrono::seconds{secondsSinceEpoch}};
+
+  if (data_->fixed) {
+    if (utcOffset != nullptr) {
+      *utcOffset = data_->eastOfUtc;
+    }
+    return breakTime(secondsSinceEpoch + data_->eastOfUtc);
+  }
+
+  const auto info = data_->zone->get_info(sysTp);
+  if (utcOffset != nullptr) {
+    *utcOffset = static_cast<int>(info.offset.count());
+  }
+  return breakTime(secondsSinceEpoch + info.offset.count());
+}
+
+std::int64_t TimeZone::fromLocalTime(const DateTime &local,
+                                     bool postTransition) const {
+  if (!valid()) {
+    throw std::runtime_error("TimeZone::fromLocalTime: invalid timezone");
+  }
+
+  const auto localTp =
+      std::chrono::local_seconds{std::chrono::seconds{fromUtcTime(local)}};
+  if (data_->fixed) {
+    const auto sysTp = std::chrono::sys_seconds{localTp.time_since_epoch()} -
+                       std::chrono::seconds{data_->eastOfUtc};
+    return sysTp.time_since_epoch().count();
+  }
+
+  const auto info = data_->zone->get_info(localTp);
+  const auto &picked = pickInfo(info, postTransition);
+  const auto sysTp =
+      std::chrono::sys_seconds{localTp.time_since_epoch()} - picked.offset;
+  return sysTp.time_since_epoch().count();
+}
+
+DateTime TimeZone::toUtcTime(std::int64_t secondsSinceEpoch) {
+  return breakTime(secondsSinceEpoch);
+}
+
+std::int64_t TimeZone::fromUtcTime(const DateTime &dt) {
+  using namespace std::chrono;
+  const year_month_day ymd = year{dt.year} /
+                             month{static_cast<unsigned>(dt.month)} /
+                             day{static_cast<unsigned>(dt.day)};
+  const sys_seconds tp =
+      sys_days{ymd} + hours{dt.hour} + minutes{dt.minute} + seconds{dt.second};
+  return tp.time_since_epoch().count();
+}

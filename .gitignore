@@ -1,0 +1,6 @@
+*.swp
+bazel-*
+compile_commands.json
+build/
+docs/
+.cache/
