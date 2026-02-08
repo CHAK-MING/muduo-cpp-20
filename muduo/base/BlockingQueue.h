@@ -1,5 +1,7 @@
 #pragma once
 
+#include "muduo/base/noncopyable.h"
+
 #include <concepts>
 #include <condition_variable>
 #include <deque>
@@ -13,12 +15,9 @@ namespace muduo {
 template <typename T>
 concept QueueElement = std::movable<T>;
 
-template <QueueElement T> class BlockingQueue {
+template <QueueElement T> class BlockingQueue : noncopyable {
 public:
   BlockingQueue() = default;
-
-  BlockingQueue(const BlockingQueue &) = delete;
-  BlockingQueue &operator=(const BlockingQueue &) = delete;
 
   void put(const T &x)
     requires std::copy_constructible<T>

@@ -1,5 +1,8 @@
 #pragma once
 
+#include "muduo/base/StringPiece.h"
+#include "muduo/base/noncopyable.h"
+
 #include <algorithm>
 #include <array>
 #include <cerrno>
@@ -24,16 +27,15 @@ concept StringLike = requires(String &s, const char *p, size_t n) {
   { s.size() } -> std::convertible_to<size_t>;
 };
 
-class ReadSmallFile {
+class ReadSmallFile : noncopyable {
 public:
   static constexpr int kBufferSize = 64 * 1024;
 
   explicit ReadSmallFile(std::string_view filename);
+  explicit ReadSmallFile(StringPiece filename);
+  explicit ReadSmallFile(StringArg filename);
   explicit ReadSmallFile(const std::filesystem::path &filename);
   ~ReadSmallFile();
-
-  ReadSmallFile(const ReadSmallFile &) = delete;
-  ReadSmallFile &operator=(const ReadSmallFile &) = delete;
 
   template <StringLike String>
   int readToString(int maxSize, String *content, int64_t *fileSize = nullptr,
@@ -68,6 +70,22 @@ int readFile(const std::string &filename, int maxSize, String *content,
 }
 
 template <StringLike String>
+int readFile(StringPiece filename, int maxSize, String *content,
+             int64_t *fileSize = nullptr, int64_t *modifyTime = nullptr,
+             int64_t *createTime = nullptr) {
+  return readFile(filename.as_string_view(), maxSize, content, fileSize,
+                  modifyTime, createTime);
+}
+
+template <StringLike String>
+int readFile(StringArg filename, int maxSize, String *content,
+             int64_t *fileSize = nullptr, int64_t *modifyTime = nullptr,
+             int64_t *createTime = nullptr) {
+  return readFile(filename.as_string_view(), maxSize, content, fileSize,
+                  modifyTime, createTime);
+}
+
+template <StringLike String>
 int readFile(const char *filename, int maxSize, String *content,
              int64_t *fileSize = nullptr, int64_t *modifyTime = nullptr,
              int64_t *createTime = nullptr) {
@@ -83,17 +101,18 @@ int readFile(const std::filesystem::path &filename, int maxSize,
   return file.readToString(maxSize, content, fileSize, modifyTime, createTime);
 }
 
-class AppendFile {
+class AppendFile : noncopyable {
 public:
   explicit AppendFile(std::string_view filename);
+  explicit AppendFile(StringPiece filename);
+  explicit AppendFile(StringArg filename);
   explicit AppendFile(const std::filesystem::path &filename);
   ~AppendFile();
 
-  AppendFile(const AppendFile &) = delete;
-  AppendFile &operator=(const AppendFile &) = delete;
-
   void append(const char *logline, size_t len);
   void append(std::string_view logline);
+  void append(StringPiece logline);
+  void append(StringArg logline);
   void append(std::span<const char> logline);
   void flush();
 

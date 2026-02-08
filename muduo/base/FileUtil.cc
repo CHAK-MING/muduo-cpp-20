@@ -18,6 +18,12 @@ FileUtil::AppendFile::AppendFile(std::string_view filename)
   }
 }
 
+FileUtil::AppendFile::AppendFile(StringPiece filename)
+    : AppendFile(filename.as_string_view()) {}
+
+FileUtil::AppendFile::AppendFile(StringArg filename)
+    : AppendFile(filename.as_string_view()) {}
+
 FileUtil::AppendFile::AppendFile(const std::filesystem::path &filename)
     : fp_(::fopen(filename.c_str(), "ae")) {
   if (fp_ != nullptr) {
@@ -56,6 +62,14 @@ void FileUtil::AppendFile::append(std::string_view logline) {
   append(logline.data(), logline.size());
 }
 
+void FileUtil::AppendFile::append(StringPiece logline) {
+  append(logline.as_string_view());
+}
+
+void FileUtil::AppendFile::append(StringArg logline) {
+  append(logline.as_string_view());
+}
+
 void FileUtil::AppendFile::append(std::span<const char> logline) {
   append(logline.data(), logline.size());
 }
@@ -77,6 +91,12 @@ FileUtil::ReadSmallFile::ReadSmallFile(std::string_view filename)
   }
   buf_[0] = '\0';
 }
+
+FileUtil::ReadSmallFile::ReadSmallFile(StringPiece filename)
+    : ReadSmallFile(filename.as_string_view()) {}
+
+FileUtil::ReadSmallFile::ReadSmallFile(StringArg filename)
+    : ReadSmallFile(filename.as_string_view()) {}
 
 FileUtil::ReadSmallFile::ReadSmallFile(const std::filesystem::path &filename)
     : fd_(::open(filename.c_str(), O_RDONLY | O_CLOEXEC)) {

@@ -14,12 +14,6 @@ using namespace muduo;
 
 std::atomic<int> Thread::numCreated_{0};
 
-Thread::~Thread() {
-  if (thread_.joinable()) {
-    thread_.request_stop();
-  }
-}
-
 void Thread::setDefaultName() {
   const int num = ++numCreated_;
   if (name_.empty()) {
@@ -58,8 +52,7 @@ void Thread::runInThread() {
 }
 
 void Thread::start() {
-  assert(!started_);
-  started_ = true;
+  assert(!started());
 
   thread_ = std::jthread([this](std::stop_token) { runInThread(); });
   while (tid_.load(std::memory_order_acquire) == 0) {

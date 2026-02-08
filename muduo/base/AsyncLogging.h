@@ -2,27 +2,25 @@
 
 #include "muduo/base/LogStream.h"
 #include "muduo/base/Types.h"
+#include "muduo/base/noncopyable.h"
 
 #include <atomic>
-#include <latch>
+#include <cstddef>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <semaphore>
-#include <cstddef>
 #include <string>
 #include <thread>
 #include <vector>
 
 namespace muduo {
 
-class AsyncLogging {
+class AsyncLogging : noncopyable {
 public:
   AsyncLogging(string basename, std::int64_t rollSize, int flushInterval = 3,
                size_t shardCount = 0);
   ~AsyncLogging();
-
-  AsyncLogging(const AsyncLogging &) = delete;
-  AsyncLogging &operator=(const AsyncLogging &) = delete;
 
   void append(const char *logline, int len);
 
@@ -31,6 +29,8 @@ public:
   [[nodiscard]] size_t shardCount() const noexcept { return shardCount_; }
 
 private:
+  static constexpr size_t kCacheLineSize = 64;
+
   void threadFunc(std::stop_token stopToken);
   [[nodiscard]] size_t shardIndex() const;
 
@@ -40,18 +40,18 @@ private:
   [[nodiscard]] BufferPtr acquireBuffer();
   void recycleBuffer(BufferPtr buffer);
 
-  struct Shard {
+  struct alignas(kCacheLineSize) Shard {
     std::mutex mutex;
     BufferPtr currentBuffer;
     BufferPtr nextBuffer;
     BufferVector buffers;
   };
   const int flushInterval_;
-  std::atomic<bool> running_{false};
+  std::atomic<bool> started_{false};
   const string basename_;
   const std::int64_t rollSize_;
   std::jthread thread_;
-  std::latch latch_{1};
+  std::binary_semaphore startedSignal_{0};
   size_t shardCount_ = 0;
   size_t shardMask_ = 0;
   std::vector<Shard> shards_;

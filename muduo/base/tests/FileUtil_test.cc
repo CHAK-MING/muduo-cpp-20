@@ -32,13 +32,15 @@ TEST(FileUtil, AppendFileWritesBytes) {
 
   file.append("abc", 3);
   file.append(std::string_view("def"));
+  file.append(muduo::StringPiece("ghi"));
+  file.append(muduo::StringArg("jkl"));
   file.flush();
 
-  EXPECT_GE(file.writtenBytes(), 6);
+  EXPECT_GE(file.writtenBytes(), 12);
 
   std::string content;
   int64_t size = 0;
   const int err = muduo::FileUtil::readFile(path, 1024, &content, &size);
   EXPECT_EQ(err, 0);
-  EXPECT_GE(content.size(), static_cast<size_t>(6));
+  EXPECT_GE(content.size(), static_cast<size_t>(12));
 }

@@ -3,14 +3,14 @@
 #include "muduo/base/CurrentThread.h"
 #include "muduo/base/TimeZone.h"
 
-#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <charconv>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <format>
+#include <type_traits>
 
 using namespace muduo;
 
@@ -30,6 +30,22 @@ constexpr auto makeDigitPairs() {
 }
 
 constexpr auto kDigitPairs = makeDigitPairs();
+
+inline void write2Digits(char *out, int value) {
+  const auto &pair = kDigitPairs.at(static_cast<size_t>(value));
+  out[0] = pair[0];
+  out[1] = pair[1];
+}
+
+inline void write4Digits(char *out, int value) {
+  if (value < 0) {
+    value = 0;
+  } else if (value > 9999) {
+    value = 9999;
+  }
+  write2Digits(out, value / 100);
+  write2Digits(out + 2, value % 100);
+}
 
 const char *cachedBasename(const char *file) {
   struct Cache {
@@ -101,20 +117,13 @@ namespace muduo {
 Logger::LogLevel g_logLevel = initLogLevel();
 
 const char *strerror_tl(int savedErrno) {
-#if ((_POSIX_C_SOURCE >= 200112L || _XOPEN_SOURCE >= 600) &&                   \
-     !defined(_GNU_SOURCE))
-  if (::strerror_r(savedErrno, t_errnobuf.data(), t_errnobuf.size()) == 0) {
-    return t_errnobuf.data();
-  }
-  return errnoFallback(savedErrno);
-#else
-  const char *msg =
+  const auto result =
       ::strerror_r(savedErrno, t_errnobuf.data(), t_errnobuf.size());
-  if (msg != nullptr) {
-    return msg;
+  if constexpr (std::is_same_v<decltype(result), int>) {
+    return result == nullptr ? t_errnobuf.data() : errnoFallback(savedErrno);
+  } else {
+    return result != nullptr ? result : errnoFallback(savedErrno);
   }
-  return errnoFallback(savedErrno);
-#endif
 }
 
 Logger::Impl::Impl(LogLevel level, int savedErrno, std::string_view func,
@@ -132,13 +141,16 @@ Logger::Impl::Impl(LogLevel level, int savedErrno, std::string_view func,
     t_lastSecond = seconds;
     DateTime dt = g_logTimeZone.valid() ? g_logTimeZone.toLocalTime(seconds)
                                         : TimeZone::toUtcTime(seconds);
-    auto out = std::format_to_n(
-        t_time.data(), static_cast<std::ptrdiff_t>(t_time.size() - 1),
-        "{:04}{:02}{:02} {:02}:{:02}:{:02}", dt.year, dt.month, dt.day, dt.hour,
-        dt.minute, dt.second);
-    const size_t written =
-        std::min(static_cast<size_t>(out.size), t_time.size() - 1);
-    t_time.at(written) = '\0';
+    write4Digits(t_time.data(), dt.year);
+    write2Digits(t_time.data() + 4, dt.month);
+    write2Digits(t_time.data() + 6, dt.day);
+    t_time.at(8) = ' ';
+    write2Digits(t_time.data() + 9, dt.hour);
+    t_time.at(11) = ':';
+    write2Digits(t_time.data() + 12, dt.minute);
+    t_time.at(14) = ':';
+    write2Digits(t_time.data() + 15, dt.second);
+    t_time.at(17) = '\0';
   }
 
   stream_ << std::string_view(t_time.data(), 17);
@@ -178,9 +190,61 @@ Logger::Impl::Impl(LogLevel level, int savedErrno, std::string_view func,
 }
 
 void Logger::Impl::finish() {
-  using namespace std::string_view_literals;
-  stream_ << " - "sv << std::string_view(basename_) << ':'
-          << static_cast<int>(loc_.line()) << '\n';
+  struct SuffixCache {
+    const char *basename = nullptr;
+    std::uint_least32_t line = 0;
+    std::array<char, 256> suffix{};
+    size_t length = 0;
+  };
+  thread_local SuffixCache cache{};
+
+  const auto line = loc_.line();
+  if (cache.basename != basename_ || cache.line != line) {
+    size_t pos = 0;
+    constexpr std::string_view kPrefix = " - ";
+    const auto appendRaw = [&pos](const char *data, size_t len) {
+      if (pos >= cache.suffix.size()) {
+        return;
+      }
+      const size_t avail = cache.suffix.size() - pos;
+      const size_t n = len < avail ? len : avail;
+      std::memcpy(cache.suffix.data() + static_cast<std::ptrdiff_t>(pos), data,
+                  n);
+      pos += n;
+    };
+    const auto appendChar = [&pos](char c) {
+      if (pos < cache.suffix.size()) {
+        cache.suffix.at(pos++) = c;
+      }
+    };
+
+    appendRaw(kPrefix.data(), kPrefix.size());
+
+    const size_t basenameLen = std::strlen(basename_);
+    appendRaw(basename_, basenameLen);
+    appendChar(':');
+
+    if (pos < cache.suffix.size()) {
+      auto [ptr, ec] =
+          std::to_chars(cache.suffix.data() + static_cast<std::ptrdiff_t>(pos),
+                        cache.suffix.data() + cache.suffix.size(),
+                        static_cast<unsigned>(line));
+      if (ec == std::errc{}) {
+        pos += static_cast<size_t>(ptr - (cache.suffix.data() + pos));
+      } else {
+        appendChar('?');
+      }
+    } else {
+      appendChar('?');
+    }
+    appendChar('\n');
+
+    cache.basename = basename_;
+    cache.line = line;
+    cache.length = pos;
+  }
+
+  stream_.append(std::string_view(cache.suffix.data(), cache.length));
 }
 
 Logger::Logger(LogLevel level, int savedErrno, std::string_view func,

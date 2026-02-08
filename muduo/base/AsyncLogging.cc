@@ -4,11 +4,11 @@
 #include "muduo/base/LogFile.h"
 
 #include <algorithm>
+#include <array>
 #include <bit>
-#include <charconv>
 #include <chrono>
-#include <cstdio>
-#include <cstring>
+#include <format>
+#include <iostream>
 
 using namespace muduo;
 
@@ -70,7 +70,7 @@ void AsyncLogging::recycleBuffer(BufferPtr buffer) {
 }
 
 AsyncLogging::~AsyncLogging() {
-  if (running_.load(std::memory_order_acquire)) {
+  if (started_.load(std::memory_order_acquire)) {
     stop();
   }
 }
@@ -108,19 +108,23 @@ void AsyncLogging::append(const char *logline, int len) {
 
 void AsyncLogging::start() {
   bool expected = false;
-  if (!running_.compare_exchange_strong(expected, true,
+  if (!started_.compare_exchange_strong(expected, true,
                                         std::memory_order_release,
                                         std::memory_order_relaxed)) {
     return;
   }
 
   thread_ = std::jthread([this](std::stop_token st) { threadFunc(st); });
-  latch_.wait();
+  startedSignal_.acquire();
 }
 
 void AsyncLogging::stop() {
-  running_.store(false, std::memory_order_release);
-  wakeup_.release();
+  bool expected = true;
+  if (!started_.compare_exchange_strong(expected, false,
+                                        std::memory_order_acq_rel,
+                                        std::memory_order_relaxed)) {
+    return;
+  }
   if (thread_.joinable()) {
     thread_.request_stop();
     thread_.join();
@@ -179,55 +183,32 @@ void AsyncLogging::threadFunc(std::stop_token stopToken) {
     }
   };
 
-  latch_.count_down();
+  std::stop_callback wakeOnStop(stopToken, [this]() { wakeup_.release(); });
+  startedSignal_.release();
 
-  while (!stopToken.stop_requested() ||
-         running_.load(std::memory_order_acquire)) {
+  while (!stopToken.stop_requested()) {
     wakeup_.try_acquire_for(std::chrono::seconds(flushInterval_));
 
     // Collect buffers from all shards
     collect();
 
-    // If no data to write, check if we should exit
     if (buffersToWrite.empty()) {
-      if (stopToken.stop_requested() &&
-          !running_.load(std::memory_order_acquire)) {
-        break;
-      }
       continue;
     }
 
     if (buffersToWrite.size() > 25) {
-      const auto nowSec = std::chrono::time_point_cast<std::chrono::seconds>(
-          std::chrono::system_clock::now());
+      const auto nowSec =
+          std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
 
-      char buf[256];
-      constexpr std::string_view kPrefix = "Dropped log messages at ";
-      std::memcpy(buf, kPrefix.data(), kPrefix.size());
-      char *p = buf + kPrefix.size();
-
-      // Format time YYYYMMDD HH:MM:SS
-      const time_t t = std::chrono::system_clock::to_time_t(nowSec);
-      struct tm tm;
-      localtime_r(&t, &tm);
-      p += std::strftime(p, 32, "%Y%m%d %H:%M:%S", &tm);
-
-      constexpr std::string_view kMiddle = ", ";
-      std::memcpy(p, kMiddle.data(), kMiddle.size());
-      p += kMiddle.size();
-
-      auto [ptr, ec] =
-          std::to_chars(p, buf + sizeof(buf), buffersToWrite.size() - 2);
-      if (ec == std::errc{}) {
-        p = ptr;
-      }
-
-      constexpr std::string_view kSuffix = " larger buffers\n";
-      std::memcpy(p, kSuffix.data(), kSuffix.size());
-      p += kSuffix.size();
-
-      std::string_view dropped(buf, static_cast<size_t>(p - buf));
-      std::fwrite(dropped.data(), 1, dropped.size(), stderr);
+      std::array<char, 256> buf{};
+      const auto result = std::format_to_n(
+          buf.data(), buf.size() - 1,
+          "Dropped log messages at {:%Y%m%d %H:%M:%S}, {} larger buffers\n",
+          nowSec, buffersToWrite.size() - 2);
+      const size_t safeLen = std::min<size_t>(result.size, buf.size() - 1);
+      std::string_view dropped(buf.data(), safeLen);
+      std::cerr.write(dropped.data(), static_cast<std::streamsize>(dropped.size()));
+      std::cerr.flush();
       output.append(dropped);
       buffersToWrite.erase(buffersToWrite.begin() + 2, buffersToWrite.end());
     }
@@ -249,13 +230,11 @@ void AsyncLogging::threadFunc(std::stop_token stopToken) {
     }
     buffersToWrite.clear();
 
-    if (stopToken.stop_requested() &&
-        !running_.load(std::memory_order_acquire)) {
-      collect();
-      if (buffersToWrite.empty()) {
-        break;
-      }
-    }
+  }
+
+  collect();
+  for (const auto &buffer : buffersToWrite) {
+    output.append(buffer->toStringView());
   }
 
   output.flush();

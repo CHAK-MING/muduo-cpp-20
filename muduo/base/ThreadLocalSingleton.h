@@ -1,28 +1,29 @@
 #pragma once
 
+#include "muduo/base/noncopyable.h"
+
 #include <concepts>
-#include <memory>
+#include <optional>
 
 namespace muduo {
 
 template <typename T>
   requires std::default_initializable<T>
-class ThreadLocalSingleton {
+class ThreadLocalSingleton : noncopyable {
 public:
-  ThreadLocalSingleton() = delete;
-  ~ThreadLocalSingleton() = delete;
-
   static T &instance() {
-    if (!t_value_) {
-      t_value_ = std::make_unique<T>();
+    if (!t_value_.has_value()) {
+      t_value_.emplace();
     }
     return *t_value_;
   }
 
-  static T *pointer() { return t_value_.get(); }
+  static T *pointer() {
+    return t_value_.has_value() ? &t_value_.value() : nullptr;
+  }
 
 private:
-  inline static thread_local std::unique_ptr<T> t_value_{};
+  inline static thread_local std::optional<T> t_value_{};
 };
 
 } // namespace muduo

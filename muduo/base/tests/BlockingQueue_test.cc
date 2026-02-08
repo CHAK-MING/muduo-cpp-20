@@ -6,6 +6,7 @@
 #include <atomic>
 #include <chrono>
 #include <latch>
+#include <memory>
 #include <thread>
 #include <vector>
 
@@ -112,6 +113,30 @@ TEST(BoundedBlockingQueue, TakeRespectsStopToken) {
   std::this_thread::sleep_for(20ms);
   consumer.request_stop();
   consumer.join();
+}
+
+TEST(BlockingQueue, MoveOnlyUniquePtr) {
+  muduo::BlockingQueue<std::unique_ptr<int>> queue;
+
+  std::unique_ptr<int> p(new int(42));
+  queue.put(std::move(p));
+  EXPECT_EQ(p, nullptr);
+
+  auto out = queue.take();
+  ASSERT_NE(out, nullptr);
+  EXPECT_EQ(*out, 42);
+}
+
+TEST(BoundedBlockingQueue, MoveOnlyUniquePtr) {
+  muduo::BoundedBlockingQueue<std::unique_ptr<int>> queue(2);
+
+  std::unique_ptr<int> p(new int(7));
+  queue.put(std::move(p));
+  EXPECT_EQ(p, nullptr);
+
+  auto out = queue.take();
+  ASSERT_NE(out, nullptr);
+  EXPECT_EQ(*out, 7);
 }
 
 } // namespace

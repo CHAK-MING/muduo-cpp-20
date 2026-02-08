@@ -58,6 +58,14 @@ TEST(Date, BasicRoundTripAndWeekday) {
   }
 }
 
+TEST(Date, LegacyFeb29BehaviorMatchesMuduo) {
+  for (int year = 1900; year < 2100; ++year) {
+    EXPECT_EQ(muduo::Date(year, 3, 1).julianDayNumber() -
+                  muduo::Date(year, 2, 29).julianDayNumber(),
+              isLeapYear(year) ? 1 : 0);
+  }
+}
+
 TEST(Date, IsoString) {
   const muduo::Date d(2024, 2, 29);
   EXPECT_EQ(d.toIsoString(), "2024-02-29");

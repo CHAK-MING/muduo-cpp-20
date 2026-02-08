@@ -1,5 +1,7 @@
 #pragma once
 
+#include "muduo/base/noncopyable.h"
+
 #include <boost/circular_buffer.hpp>
 
 #include <concepts>
@@ -15,7 +17,7 @@ namespace muduo {
 
 template <typename T>
   requires std::movable<T>
-class BoundedBlockingQueue {
+class BoundedBlockingQueue : noncopyable {
 public:
   explicit BoundedBlockingQueue(int maxSize)
       : queue_(static_cast<size_t>(maxSize)) {
@@ -23,9 +25,6 @@ public:
       throw std::invalid_argument("BoundedBlockingQueue maxSize must be > 0");
     }
   }
-
-  BoundedBlockingQueue(const BoundedBlockingQueue &) = delete;
-  BoundedBlockingQueue &operator=(const BoundedBlockingQueue &) = delete;
 
   void put(const T &x)
     requires std::copy_constructible<T>

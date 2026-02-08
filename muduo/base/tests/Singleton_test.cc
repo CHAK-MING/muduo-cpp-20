@@ -2,9 +2,12 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
+#include <atomic>
 #include <future>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace {
 
@@ -15,6 +18,15 @@ struct TestObject {
 struct TestNoDestroy {
   void no_destroy() {}
   int value = 7;
+};
+
+std::atomic<int> g_ctorCount{0};
+
+struct ContendedInitObject {
+  ContendedInitObject() {
+    g_ctorCount.fetch_add(1, std::memory_order_relaxed);
+  }
+  int payload = 42;
 };
 
 } // namespace
@@ -41,4 +53,29 @@ TEST(Singleton, SharedAcrossThreads) {
 TEST(Singleton, NoDestroyTypeWorks) {
   auto& instance = muduo::Singleton<TestNoDestroy>::instance();
   EXPECT_EQ(instance.value, 7);
+}
+
+TEST(Singleton, InstanceInitializationRaceWith64Threads) {
+  g_ctorCount.store(0, std::memory_order_release);
+  constexpr size_t kThreads = 64;
+  std::array<ContendedInitObject*, kThreads> addresses{};
+  std::vector<std::jthread> workers;
+  workers.reserve(kThreads);
+
+  for (size_t i = 0; i < kThreads; ++i) {
+    workers.emplace_back([i, &addresses](std::stop_token) {
+      addresses.at(i) = &muduo::Singleton<ContendedInitObject>::instance();
+    });
+  }
+  for (auto& worker : workers) {
+    worker.join();
+  }
+
+  const auto* first = addresses.front();
+  ASSERT_NE(first, nullptr);
+  for (const auto* addr : addresses) {
+    EXPECT_EQ(addr, first);
+  }
+  EXPECT_EQ(first->payload, 42);
+  EXPECT_EQ(g_ctorCount.load(std::memory_order_acquire), 1);
 }

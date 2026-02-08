@@ -36,6 +36,8 @@ TEST(LogFile, AppendCreatesLogFile) {
     muduo::LogFile file(basename, 1024 * 1024, false);
     file.append("abc\n", 4);
     file.append("def\n", 4);
+    file.append(muduo::StringPiece("ghi\n"));
+    file.append(muduo::StringArg("jkl\n"));
     file.flush();
   }
 

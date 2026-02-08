@@ -51,7 +51,9 @@ constexpr To down_cast(From *f) {
 
 namespace detail {
 
-class MoveOnlyFunction {
+template <typename Signature> class MoveOnlyFunction;
+
+template <typename R, typename... Args> class MoveOnlyFunction<R(Args...)> {
 public:
   MoveOnlyFunction() = default;
   explicit MoveOnlyFunction(std::nullptr_t) {}
@@ -63,7 +65,7 @@ public:
 
   template <typename F>
     requires(!std::same_as<std::remove_cvref_t<F>, MoveOnlyFunction> &&
-             std::invocable<std::decay_t<F> &>)
+             std::is_invocable_r_v<R, std::decay_t<F> &, Args...>)
   explicit MoveOnlyFunction(F &&f)
       : callable_(
             std::make_unique<Model<std::decay_t<F>>>(std::forward<F>(f))) {}
@@ -72,21 +74,27 @@ public:
     return static_cast<bool>(callable_);
   }
 
-  void operator()() {
+  R operator()(Args... args) {
     assert(callable_ != nullptr);
-    callable_->invoke();
+    return callable_->invoke(std::forward<Args>(args)...);
   }
 
 private:
   struct Concept {
     virtual ~Concept() = default;
-    virtual void invoke() = 0;
+    virtual R invoke(Args &&...args) = 0;
   };
 
   template <typename F> struct Model final : Concept {
     explicit Model(F f) : function_(std::move(f)) {}
 
-    void invoke() override { std::invoke(function_); }
+    R invoke(Args &&...args) override {
+      if constexpr (std::is_void_v<R>) {
+        std::invoke(function_, std::forward<Args>(args)...);
+      } else {
+        return std::invoke(function_, std::forward<Args>(args)...);
+      }
+    }
 
     F function_;
   };

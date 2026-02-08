@@ -14,6 +14,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Boost is a required dependency for upcoming Asio-based modules.
 # We require 1.85+ to keep behavior and API expectations consistent.
 find_package(Boost 1.85 REQUIRED COMPONENTS system)
+find_package(ZLIB REQUIRED)
 message(STATUS "Found Boost ${Boost_VERSION_STRING}")
 
 # Compiler version requirements for full C++20 support
@@ -37,6 +38,10 @@ if(BUILD_TESTING)
   )
   set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(googletest)
+  find_package(benchmark CONFIG QUIET)
+  if(NOT benchmark_FOUND)
+    message(FATAL_ERROR "Google Benchmark not found. Please install benchmark (>=1.9).")
+  endif()
 
   # Note: Tests are now handled in muduo/base/tests/CMakeLists.txt
 endif()

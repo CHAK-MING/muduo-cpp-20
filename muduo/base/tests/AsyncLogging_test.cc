@@ -7,6 +7,7 @@
 #include <format>
 #include <fstream>
 #include <iterator>
+#include <latch>
 #include <string>
 #include <thread>
 #include <unistd.h>
@@ -34,6 +35,16 @@ std::string readFile(const std::filesystem::path &path) {
                      std::istreambuf_iterator<char>()};
 }
 
+size_t countOccurrences(const std::string &text, std::string_view token) {
+  size_t count = 0;
+  size_t pos = 0;
+  while ((pos = text.find(token, pos)) != std::string::npos) {
+    ++count;
+    pos += token.size();
+  }
+  return count;
+}
+
 } // namespace
 
 TEST(AsyncLogging, WritesMessagesToFile) {
@@ -56,6 +67,57 @@ TEST(AsyncLogging, WritesMessagesToFile) {
   const std::string content = readFile(files.front());
   EXPECT_NE(content.find("line one"), std::string::npos);
   EXPECT_NE(content.find("line two"), std::string::npos);
+
+  for (const auto &path : files) {
+    std::filesystem::remove(path);
+  }
+}
+
+TEST(AsyncLogging, MultiThreadStressNoLoss) {
+  using namespace std::chrono_literals;
+  const std::string basename =
+      std::format("muduo_asynclog_stress_{}_{}", ::getpid(),
+                  std::chrono::steady_clock::now().time_since_epoch().count());
+  for (const auto &path : findLogFiles(basename)) {
+    std::filesystem::remove(path);
+  }
+
+  muduo::AsyncLogging logger(basename, 20 * 1024 * 1024, 1);
+  logger.start();
+
+  constexpr int kThreads = 10;
+  constexpr int kPerThread = 2000;
+  std::latch ready(kThreads);
+  std::vector<std::jthread> workers;
+  workers.reserve(kThreads);
+
+  for (int t = 0; t < kThreads; ++t) {
+    workers.emplace_back([&logger, &ready, t](std::stop_token) {
+      ready.count_down();
+      ready.wait();
+      for (int i = 0; i < kPerThread; ++i) {
+        const std::string line = std::format("stress-thread={} seq={}\n", t, i);
+        logger.append(line.data(), static_cast<int>(line.size()));
+      }
+    });
+  }
+
+  for (auto &worker : workers) {
+    worker.join();
+  }
+
+  std::this_thread::sleep_for(150ms);
+  logger.stop();
+
+  const auto files = findLogFiles(basename);
+  ASSERT_FALSE(files.empty());
+
+  std::string content;
+  for (const auto &path : files) {
+    content += readFile(path);
+  }
+  const size_t count = countOccurrences(content, "stress-thread=");
+  EXPECT_EQ(count, static_cast<size_t>(kThreads * kPerThread));
 
   for (const auto &path : files) {
     std::filesystem::remove(path);

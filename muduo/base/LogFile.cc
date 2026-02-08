@@ -34,6 +34,10 @@ void LogFile::append(std::string_view logline) {
   append(logline.data(), static_cast<int>(logline.size()));
 }
 
+void LogFile::append(StringPiece logline) { append(logline.as_string_view()); }
+
+void LogFile::append(StringArg logline) { append(logline.as_string_view()); }
+
 void LogFile::flush() {
   std::unique_lock<std::mutex> lock;
   if (mutex_) {

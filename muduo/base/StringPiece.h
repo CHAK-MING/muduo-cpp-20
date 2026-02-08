@@ -26,7 +26,9 @@ public:
   [[nodiscard]] constexpr const char *begin() const noexcept {
     return view_.begin();
   }
-  [[nodiscard]] constexpr const char *end() const noexcept { return view_.end(); }
+  [[nodiscard]] constexpr const char *end() const noexcept {
+    return view_.end();
+  }
 
   constexpr void clear() noexcept { view_ = {}; }
   constexpr void remove_prefix(size_t n) { view_.remove_prefix(n); }
@@ -50,7 +52,7 @@ public:
   }
 
 private:
-  std::string_view view_{};
+  std::string_view view_;
 };
 
 class StringArg {
@@ -72,4 +74,3 @@ private:
 };
 
 } // namespace muduo
-

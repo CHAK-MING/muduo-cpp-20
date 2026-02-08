@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <cstring>
 #include <format>
+#include <muduo/base/noncopyable.h>
 #include <span>
 #include <string_view>
 
@@ -20,11 +21,9 @@ namespace detail {
 inline constexpr size_t kSmallBuffer = 4000;
 inline constexpr size_t kLargeBuffer = 4000ULL * 1000ULL;
 
-template <size_t SIZE> class FixedBuffer {
+template <size_t SIZE> class FixedBuffer : noncopyable {
 public:
   FixedBuffer() = default;
-  FixedBuffer(const FixedBuffer &) = delete;
-  FixedBuffer &operator=(const FixedBuffer &) = delete;
 
   void append(const char *buf, size_t len) {
     // Append as much as possible (partial write)
@@ -67,12 +66,9 @@ private:
   size_t writePos_ = 0;
 };
 
-// extern template class FixedBuffer<kSmallBuffer>;
-// extern template class FixedBuffer<kLargeBuffer>;
-
 } // namespace detail
 
-class LogStream {
+class LogStream : noncopyable {
 public:
   using Buffer = detail::FixedBuffer<detail::kSmallBuffer>;
 

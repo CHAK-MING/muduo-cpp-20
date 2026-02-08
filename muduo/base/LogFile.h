@@ -25,6 +25,8 @@ public:
 
   void append(const char *logline, int len);
   void append(std::string_view logline);
+  void append(StringPiece logline);
+  void append(StringArg logline);
   void flush();
   bool rollFile();
 

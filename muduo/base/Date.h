@@ -23,9 +23,7 @@ public:
 
   constexpr Date() : day_(kInvalidDate) {}
   constexpr Date(int year, int month, int day)
-      : Date(std::chrono::year{year} /
-             std::chrono::month{static_cast<unsigned>(month)} /
-             std::chrono::day{static_cast<unsigned>(day)}) {}
+      : day_(fromJulianDay(getJulianDayNumber(year, month, day))) {}
   constexpr explicit Date(std::chrono::year_month_day ymd)
       : day_(ymd.ok() ? std::chrono::sys_days{ymd} : kInvalidDate) {}
   constexpr explicit Date(int julianDayNum)
@@ -74,6 +72,14 @@ public:
   }
 
 private:
+  static constexpr int getJulianDayNumber(int year, int month, int day) {
+    const int a = (14 - month) / 12;
+    const int y = year + 4800 - a;
+    const int m = month + 12 * a - 3;
+    return day + (153 * m + 2) / 5 + y * 365 + y / 4 - y / 100 + y / 400 -
+           32045;
+  }
+
   static constexpr std::chrono::sys_days fromJulianDay(int julianDayNum) {
     return std::chrono::sys_days{
         std::chrono::days{julianDayNum - kJulianDayOf1970_01_01}};

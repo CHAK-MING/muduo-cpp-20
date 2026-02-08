@@ -48,3 +48,13 @@ TEST(Timestamp, InvalidTimestamp) {
   EXPECT_FALSE(inv.valid());
   EXPECT_EQ(inv.microSecondsSinceEpoch(), 0);
 }
+
+TEST(Timestamp, MonotonicNowOneMillionSamples) {
+  constexpr int kSamples = 1'000'000;
+  auto last = Timestamp::now();
+  for (int i = 0; i < kSamples; ++i) {
+    const auto now = Timestamp::now();
+    EXPECT_GE(now, last);
+    last = now;
+  }
+}
