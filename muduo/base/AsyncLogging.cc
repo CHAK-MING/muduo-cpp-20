@@ -3,6 +3,8 @@
 #include "muduo/base/CurrentThread.h"
 #include "muduo/base/LogFile.h"
 
+#include <algorithm>
+#include <bit>
 #include <charconv>
 #include <chrono>
 #include <cstdio>
@@ -10,10 +12,30 @@
 
 using namespace muduo;
 
+namespace {
+
+size_t computeDefaultShardCount() {
+  const auto hw = std::thread::hardware_concurrency();
+  const size_t half = hw == 0 ? 4U : static_cast<size_t>(hw / 2U);
+  const size_t bounded = std::min<size_t>(8, std::max<size_t>(2, half));
+  return std::bit_ceil(bounded);
+}
+
+size_t normalizeShardCount(size_t requested) {
+  if (requested == 0) {
+    return computeDefaultShardCount();
+  }
+  const size_t bounded = std::max<size_t>(2, requested);
+  return std::bit_ceil(bounded);
+}
+
+} // namespace
+
 AsyncLogging::AsyncLogging(string basename, std::int64_t rollSize,
-                           int flushInterval)
+                           int flushInterval, size_t shardCount)
     : flushInterval_(flushInterval), basename_(std::move(basename)),
-      rollSize_(rollSize) {
+      rollSize_(rollSize), shardCount_(normalizeShardCount(shardCount)),
+      shardMask_(shardCount_ - 1), shards_(shardCount_) {
   for (auto &shard : shards_) {
     shard.currentBuffer = std::make_unique<Buffer>();
     shard.nextBuffer = std::make_unique<Buffer>();
@@ -55,7 +77,7 @@ AsyncLogging::~AsyncLogging() {
 
 size_t AsyncLogging::shardIndex() const {
   thread_local size_t cached =
-      static_cast<size_t>(muduo::CurrentThread::tid()) % kShardCount;
+      static_cast<size_t>(muduo::CurrentThread::tid()) & shardMask_;
   return cached;
 }
 

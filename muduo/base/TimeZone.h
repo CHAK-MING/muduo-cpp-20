@@ -43,6 +43,12 @@ public:
                                      int *utcOffset = nullptr) const;
   [[nodiscard]] std::int64_t fromLocalTime(const DateTime &local,
                                            bool postTransition = false) const;
+  [[nodiscard]] bool tryToLocalTime(std::int64_t secondsSinceEpoch,
+                                    DateTime *result,
+                                    int *utcOffset = nullptr) const noexcept;
+  [[nodiscard]] bool tryFromLocalTime(const DateTime &local,
+                                      std::int64_t *result,
+                                      bool postTransition = false) const noexcept;
 
   static DateTime toUtcTime(std::int64_t secondsSinceEpoch);
   static std::int64_t fromUtcTime(const DateTime &dt);

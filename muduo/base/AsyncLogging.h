@@ -3,12 +3,12 @@
 #include "muduo/base/LogStream.h"
 #include "muduo/base/Types.h"
 
-#include <array>
 #include <atomic>
 #include <latch>
 #include <memory>
 #include <mutex>
 #include <semaphore>
+#include <cstddef>
 #include <string>
 #include <thread>
 #include <vector>
@@ -17,7 +17,8 @@ namespace muduo {
 
 class AsyncLogging {
 public:
-  AsyncLogging(string basename, std::int64_t rollSize, int flushInterval = 3);
+  AsyncLogging(string basename, std::int64_t rollSize, int flushInterval = 3,
+               size_t shardCount = 0);
   ~AsyncLogging();
 
   AsyncLogging(const AsyncLogging &) = delete;
@@ -27,6 +28,7 @@ public:
 
   void start();
   void stop();
+  [[nodiscard]] size_t shardCount() const noexcept { return shardCount_; }
 
 private:
   void threadFunc(std::stop_token stopToken);
@@ -44,15 +46,15 @@ private:
     BufferPtr nextBuffer;
     BufferVector buffers;
   };
-  static constexpr size_t kShardCount = 8;
-
   const int flushInterval_;
   std::atomic<bool> running_{false};
   const string basename_;
   const std::int64_t rollSize_;
   std::jthread thread_;
   std::latch latch_{1};
-  std::array<Shard, kShardCount> shards_;
+  size_t shardCount_ = 0;
+  size_t shardMask_ = 0;
+  std::vector<Shard> shards_;
   std::binary_semaphore wakeup_{0};
   std::mutex poolMutex_;
   BufferVector globalPool_;

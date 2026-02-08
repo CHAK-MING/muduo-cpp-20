@@ -12,6 +12,10 @@
 #include <type_traits>
 #include <utility>
 
+#ifndef MUDUO_DISABLE_LEGACY_LOG_MACROS
+#include "muduo/base/StringPiece.h"
+#endif
+
 namespace muduo {
 
 using std::string;

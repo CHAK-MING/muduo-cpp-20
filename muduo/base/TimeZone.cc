@@ -33,18 +33,18 @@ DateTime breakTime(std::int64_t t) {
   return dt;
 }
 
-const std::chrono::sys_info &pickInfo(const std::chrono::local_info &info,
-                                      bool post_transition) {
+const std::chrono::sys_info *pickInfoNoThrow(const std::chrono::local_info &info,
+                                             bool post_transition) noexcept {
   using std::chrono::local_info;
   switch (info.result) {
   case local_info::unique:
-    return info.first;
+    return &info.first;
   case local_info::nonexistent:
-    return post_transition ? info.first : info.second;
+    return post_transition ? &info.first : &info.second;
   case local_info::ambiguous:
-    return post_transition ? info.second : info.first;
+    return post_transition ? &info.second : &info.first;
   default:
-    throw std::runtime_error("TimeZone: unexpected local_info result");
+    return nullptr;
   }
 }
 
@@ -151,8 +151,26 @@ TimeZone TimeZone::loadZoneFile(std::string_view zonefile) {
 
 DateTime TimeZone::toLocalTime(std::int64_t secondsSinceEpoch,
                                int *utcOffset) const {
-  if (!valid()) {
+  DateTime result;
+  if (!tryToLocalTime(secondsSinceEpoch, &result, utcOffset)) {
     throw std::runtime_error("TimeZone::toLocalTime: invalid timezone");
+  }
+  return result;
+}
+
+std::int64_t TimeZone::fromLocalTime(const DateTime &local,
+                                     bool postTransition) const {
+  std::int64_t result = 0;
+  if (!tryFromLocalTime(local, &result, postTransition)) {
+    throw std::runtime_error("TimeZone::fromLocalTime: invalid timezone");
+  }
+  return result;
+}
+
+bool TimeZone::tryToLocalTime(std::int64_t secondsSinceEpoch, DateTime *result,
+                              int *utcOffset) const noexcept {
+  if (!valid() || result == nullptr) {
+    return false;
   }
 
   const auto sysTp =
@@ -162,35 +180,41 @@ DateTime TimeZone::toLocalTime(std::int64_t secondsSinceEpoch,
     if (utcOffset != nullptr) {
       *utcOffset = data_->eastOfUtc;
     }
-    return breakTime(secondsSinceEpoch + data_->eastOfUtc);
+    *result = breakTime(secondsSinceEpoch + data_->eastOfUtc);
+    return true;
   }
 
   const auto info = data_->zone->get_info(sysTp);
   if (utcOffset != nullptr) {
     *utcOffset = static_cast<int>(info.offset.count());
   }
-  return breakTime(secondsSinceEpoch + info.offset.count());
+  *result = breakTime(secondsSinceEpoch + info.offset.count());
+  return true;
 }
 
-std::int64_t TimeZone::fromLocalTime(const DateTime &local,
-                                     bool postTransition) const {
-  if (!valid()) {
-    throw std::runtime_error("TimeZone::fromLocalTime: invalid timezone");
+bool TimeZone::tryFromLocalTime(const DateTime &local, std::int64_t *result,
+                                bool postTransition) const noexcept {
+  if (!valid() || result == nullptr) {
+    return false;
   }
-
   const auto localTp =
       std::chrono::local_seconds{std::chrono::seconds{fromUtcTime(local)}};
   if (data_->fixed) {
     const auto sysTp = std::chrono::sys_seconds{localTp.time_since_epoch()} -
                        std::chrono::seconds{data_->eastOfUtc};
-    return sysTp.time_since_epoch().count();
+    *result = sysTp.time_since_epoch().count();
+    return true;
   }
 
   const auto info = data_->zone->get_info(localTp);
-  const auto &picked = pickInfo(info, postTransition);
+  const auto *picked = pickInfoNoThrow(info, postTransition);
+  if (picked == nullptr) {
+    return false;
+  }
   const auto sysTp =
-      std::chrono::sys_seconds{localTp.time_since_epoch()} - picked.offset;
-  return sysTp.time_since_epoch().count();
+      std::chrono::sys_seconds{localTp.time_since_epoch()} - picked->offset;
+  *result = sysTp.time_since_epoch().count();
+  return true;
 }
 
 DateTime TimeZone::toUtcTime(std::int64_t secondsSinceEpoch) {

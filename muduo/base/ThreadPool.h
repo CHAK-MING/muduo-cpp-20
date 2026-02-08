@@ -5,6 +5,7 @@
 #include "muduo/base/Types.h"
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <stop_token>
@@ -40,17 +41,11 @@ public:
   [[nodiscard]] size_t queueSize() const;
 
   void run(Task f);
+  void run(std::function<void()> f) { run(Task(std::move(f))); }
   template <typename F>
     requires std::invocable<std::decay_t<F>>
   void run(F &&f) {
-    if (threads_.empty()) {
-      std::invoke(std::forward<F>(f));
-      return;
-    }
-    if (!isRunning()) {
-      return;
-    }
-    put(Task(std::forward<F>(f)));
+    run(Task(std::forward<F>(f)));
   }
 
 private:

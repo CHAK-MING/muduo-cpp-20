@@ -1,6 +1,6 @@
 # muduo-cpp-20
 
-`muduo-cpp-20` is an in-progress C++20 modernization of the whole `muduo` project. The current phase delivers substantial upgrades in core components (especially logging/base), with `muduo/net` modernization as the next major milestone.
+`muduo-cpp-20` is an in-progress C++20 modernization of the whole `muduo` project. The current phase delivers substantial upgrades in core components (base), with `muduo/net` modernization as the next major milestone.
 
 ## Highlights
 
@@ -9,26 +9,23 @@
   - `std::binary_semaphore`, `std::latch`
   - `std::source_location`, `std::format`
 - High-throughput async logging:
-  - 8-shard front-end buffers to reduce producer contention
+  - shard front-end buffers to reduce producer contention
   - backend recycling pool to reduce allocation churn
-- Logging API supports two styles:
-  - chained stream style: `muduo::logInfo() << ...`
-  - format style: `muduo::logInfo("x={} y={}", x, y)`
 
 ## Performance (Measured)
 
-Measured on this repository with current binaries on **2026-02-07** (Release-like benchmark binaries).
+Measured on this repository with current binaries on **2026-02-08** (Release-like benchmark binaries, 5-run average).
 
-| Scenario | Baseline (old) | muduo-cpp-20 (new) | Gain |
+| Scenario | Baseline | muduo-cpp-20 | Gain |
 | :-- | --: | --: | --: |
-| Sync logging (`nop`) | 5,173,930 msg/s | 9,020,338 msg/s | +74.3% |
-| Async logging (`16 x 20,000`) | 1,147,430 msg/s | 6,589,516 msg/s | +474.2% |
+| Sync logging (`nop`) | 5,218,971 msg/s | 9,226,340 msg/s | +76.8% |
+| Async logging (`16 x 20,000`) | 1,217,465 msg/s | 6,596,865 msg/s | +441.9% |
 
 Only measured numbers are kept here. Temporary benchmark files are not part of the project.
 
 ## Benchmark Environment
 
-- OS: `Linux pm-server 6.17.0-8-generic x86_64`
+- OS: `Linux 6.17.0-8-generic x86_64`
 - CPU: `Intel(R) Xeon(R) Gold 5218 CPU @ 2.30GHz`
 - Logical CPUs: `32`
 - Compiler (GCC): `g++ 15.2.0`
@@ -63,45 +60,25 @@ ctest --test-dir build --output-on-failure
 
 ## Usage
 
-```cpp
-#include "muduo/base/Logging.h"
-
-int main() {
-  muduo::logInfo() << "Connection established from " << "127.0.0.1" << ":" << 8080;
-  muduo::logWarn("cpu={} load={:.2f}", 16, 0.73);
-}
-```
-
-## Migration Notes (Old Muduo -> C++20)
-
-Old muduo commonly uses macros:
-
-```cpp
-LOG_INFO << "Connection established from " << "127.0.0.1" << ":" << 8080;
-```
-
-In this repository, the direct replacement is:
-
-```cpp
-muduo::logInfo() << "Connection established from " << "127.0.0.1" << ":" << 8080;
-```
-
-This keeps the stream style with minimal code changes, while new projects are recommended to use format-style logging where appropriate:
-
-```cpp
-muduo::logWarn("cpu={} load={:.2f}", 16, 0.73);
-```
-
 ## Removed Headers and Replacements
 
-Some legacy utility headers were intentionally removed where C++20 standard facilities are clearer and faster:
+Legacy utility wrappers are intentionally reduced where C++20 standard facilities are clearer and faster.
 
-- Removed: `muduo/base/CountDownLatch.h`
-  - Use: `std::latch`
-- Removed: `muduo/base/noncopyable.h`
-  - Use: deleted special members (`T(const T&) = delete; T& operator=(const T&) = delete;`)
-- Removed: macro-centric logging entry points as the primary API
-  - Use: function-based logging APIs (`muduo::logInfo()`, `muduo::logWarn(...)`, etc.)
+Removed or no longer provided as dedicated wrappers:
+
+- `muduo/base/CountDownLatch.h`
+- `muduo/base/noncopyable.h`
+- `muduo/base/copyable.h`
+- `muduo/base/Mutex.h` and related lock-guard wrapper variants
+- `muduo/base/Condition.h` wrapper variants
+
+Recommended replacements:
+
+- Latch/synchronization: `std::latch`, `std::counting_semaphore`, `std::mutex`, `std::condition_variable_any`
+- Copy control: deleted copy/move operations in-class
+- String view adapters: prefer `std::string_view` for new code; `StringPiece` / `StringArg` compatibility aliases remain available and can be disabled via `MUDUO_DISABLE_LEGACY_LOG_MACROS`
+- Threading: `std::jthread`, `std::stop_token`
+- Paths: `std::filesystem::path`
 
 ## Roadmap (Next: `muduo/net`)
 

@@ -57,9 +57,9 @@ const char *cachedBasename(const char *file) {
 const char *errnoFallback(int savedErrno) {
   constexpr std::string_view kPrefix = "errno ";
   std::memcpy(t_errnobuf.data(), kPrefix.data(), kPrefix.size());
-  const auto *toCharsBegin =
+  auto *const toCharsBegin =
       t_errnobuf.data() + static_cast<std::ptrdiff_t>(kPrefix.size());
-  const auto *toCharsEnd = t_errnobuf.data() + t_errnobuf.size() - 1;
+  auto *const toCharsEnd = t_errnobuf.data() + t_errnobuf.size() - 1;
   auto [ptr, ec] = std::to_chars(toCharsBegin, toCharsEnd, savedErrno);
   if (ec != std::errc{}) {
     return "errno ?";

@@ -75,6 +75,19 @@ size_t ThreadPool::queueSize() const {
   return 0;
 }
 
+void ThreadPool::run(Task f) {
+  if (threads_.empty()) {
+    if (f) {
+      f();
+    }
+    return;
+  }
+  if (!isRunning()) {
+    return;
+  }
+  put(std::move(f));
+}
+
 void ThreadPool::put(Task &&task) {
   if (boundedQueue_) {
     boundedQueue_->put(std::move(task));

@@ -26,6 +26,14 @@ public:
     NUM_LOG_LEVELS,
   };
 
+  // Legacy aliases for source compatibility with old muduo code.
+  static constexpr LogLevel TRACE = LogLevel::TRACE;
+  static constexpr LogLevel DEBUG = LogLevel::DEBUG;
+  static constexpr LogLevel INFO = LogLevel::INFO;
+  static constexpr LogLevel WARN = LogLevel::WARN;
+  static constexpr LogLevel ERROR = LogLevel::ERROR;
+  static constexpr LogLevel FATAL = LogLevel::FATAL;
+
   explicit Logger(LogLevel level = LogLevel::INFO, int savedErrno = 0,
                   std::string_view func = {},
                   std::source_location loc = std::source_location::current());
@@ -222,5 +230,55 @@ T *CheckNotNull(const char *names, T *ptr,
   }
   return ptr;
 }
+
+#ifndef MUDUO_DISABLE_LEGACY_LOG_MACROS
+#define LOG_TRACE                                                              \
+  if (!::muduo::shouldLog(::muduo::Logger::LogLevel::TRACE))                  \
+    ;                                                                          \
+  else                                                                         \
+    ::muduo::logTrace()
+
+#define LOG_DEBUG                                                              \
+  if (!::muduo::shouldLog(::muduo::Logger::LogLevel::DEBUG))                  \
+    ;                                                                          \
+  else                                                                         \
+    ::muduo::logDebug()
+
+#define LOG_INFO                                                               \
+  if (!::muduo::shouldLog(::muduo::Logger::LogLevel::INFO))                   \
+    ;                                                                          \
+  else                                                                         \
+    ::muduo::logInfo()
+
+#define LOG_WARN                                                               \
+  if (!::muduo::shouldLog(::muduo::Logger::LogLevel::WARN))                   \
+    ;                                                                          \
+  else                                                                         \
+    ::muduo::logWarn()
+
+#define LOG_ERROR                                                              \
+  if (!::muduo::shouldLog(::muduo::Logger::LogLevel::ERROR))                  \
+    ;                                                                          \
+  else                                                                         \
+    ::muduo::logError()
+
+#define LOG_FATAL                                                              \
+  if (!::muduo::shouldLog(::muduo::Logger::LogLevel::FATAL))                  \
+    ;                                                                          \
+  else                                                                         \
+    ::muduo::logFatal()
+
+#define LOG_SYSERR                                                             \
+  if (!::muduo::shouldLog(::muduo::Logger::LogLevel::ERROR))                  \
+    ;                                                                          \
+  else                                                                         \
+    ::muduo::logSysErr()
+
+#define LOG_SYSFATAL                                                           \
+  if (!::muduo::shouldLog(::muduo::Logger::LogLevel::FATAL))                  \
+    ;                                                                          \
+  else                                                                         \
+    ::muduo::logSysFatal()
+#endif
 
 } // namespace muduo
