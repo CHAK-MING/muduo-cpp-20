@@ -50,12 +50,12 @@ void Channel::handleEvent(Timestamp receiveTime) {
 
 void Channel::handleEventWithGuard(Timestamp receiveTime) {
   eventHandling_ = true;
-  LOG_TRACE << reventsToString();
+  muduo::logTrace("{}", reventsToString());
 
   const bool hasInvalidEvent = (revents_ & POLLNVAL) != 0;
   if ((revents_ & POLLHUP) && !(revents_ & POLLIN)) {
     if (logHup_) {
-      LOG_WARN << "fd = " << fd_ << " Channel::handleEvent() POLLHUP";
+      muduo::logWarn("fd = {} Channel::handleEvent() POLLHUP", fd_);
     }
     if (closeCallback_) {
       closeCallback_();
@@ -63,7 +63,7 @@ void Channel::handleEventWithGuard(Timestamp receiveTime) {
   }
 
   if (hasInvalidEvent) {
-    LOG_WARN << "fd = " << fd_ << " Channel::handleEvent() POLLNVAL";
+    muduo::logWarn("fd = {} Channel::handleEvent() POLLNVAL", fd_);
   }
 
   if ((revents_ & POLLERR) || hasInvalidEvent) {

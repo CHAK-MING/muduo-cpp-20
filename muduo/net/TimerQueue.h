@@ -6,6 +6,7 @@
 #include "muduo/net/Channel.h"
 #include "muduo/net/TimerId.h"
 
+#include <chrono>
 #include <concepts>
 #include <set>
 #include <span>
@@ -26,10 +27,11 @@ public:
   ~TimerQueue();
 
   [[nodiscard]] TimerId addTimer(TimerCallback cb, Timestamp when,
-                                 double interval);
+                                 std::chrono::microseconds interval);
   template <typename F>
     requires CallbackBindable<F, TimerCallback>
-  [[nodiscard]] TimerId addTimer(F &&cb, Timestamp when, double interval) {
+  [[nodiscard]] TimerId addTimer(F &&cb, Timestamp when,
+                                 std::chrono::microseconds interval) {
     return addTimer(TimerCallback(std::forward<F>(cb)), when, interval);
   }
   void cancel(TimerId timerId);

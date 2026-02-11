@@ -7,17 +7,19 @@
 #include <concepts>
 #include <span>
 #include <string>
+#include <string_view>
 
 namespace muduo::net {
 namespace {
 
+using namespace std::string_view_literals;
+
 template <typename T>
 concept SupportsLegacySendOverloads = requires(T &conn, const T &constConn,
                                                const std::string &s,
-                                               std::string &&r, const char *cstr,
+                                               std::string &&r,
                                                std::string_view sv,
                                                std::span<const std::byte> bytes) {
-  conn.send(cstr);
   conn.send(s);
   conn.send(std::move(r));
   conn.send(sv);
@@ -30,11 +32,11 @@ static_assert(SupportsLegacySendOverloads<TcpConnection>);
 TEST(ApiCompatibilityTest, BufferAppendLegacyOverloads) {
   Buffer buf;
   const std::string fromString = "alpha";
-  const char *fromCStr = "beta";
+  const std::string_view fromSv = "beta"sv;
 
   buf.append(fromString);
-  buf.append(fromCStr);
-  buf.append("gamma");
+  buf.append(fromSv);
+  buf.append("gamma"sv);
 
   EXPECT_EQ(buf.retrieveAllAsString(), "alphabetagamma");
 }

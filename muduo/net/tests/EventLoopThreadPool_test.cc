@@ -30,6 +30,7 @@ TEST_F(EventLoopThreadPoolTest, ZeroThreadFallsBackToBaseLoop) {
 }
 
 TEST_F(EventLoopThreadPoolTest, OneThreadAlwaysReturnsSameWorkerAndRunsTask) {
+  using namespace std::chrono_literals;
   muduo::net::EventLoop loop;
   muduo::net::EventLoopThreadPool pool(&loop, "one");
   pool.setThreadNum(1);
@@ -51,7 +52,7 @@ TEST_F(EventLoopThreadPoolTest, OneThreadAlwaysReturnsSameWorkerAndRunsTask) {
   worker->runInLoop(muduo::net::EventLoop::Functor(
       [&ran] { ran.store(true, std::memory_order_release); }));
   for (int i = 0; i < 200 && !ran.load(std::memory_order_acquire); ++i) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    std::this_thread::sleep_for(5ms);
   }
   EXPECT_TRUE(ran.load(std::memory_order_acquire));
 }

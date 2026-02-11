@@ -32,8 +32,8 @@ HttpServer::HttpServer(EventLoop *loop, const InetAddress &listenAddr,
 }
 
 void HttpServer::start() {
-  LOG_WARN << "HttpServer[" << server_.name() << "] starts listening on "
-           << server_.ipPort();
+  muduo::logWarn("HttpServer[{}] starts listening on {}", server_.name(),
+                 server_.ipPort());
   server_.start();
 }
 

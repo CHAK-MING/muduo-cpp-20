@@ -1,8 +1,8 @@
 #pragma once
 
+#include "muduo/base/Timestamp.h"
 #include "muduo/base/Types.h"
 #include "muduo/base/noncopyable.h"
-#include "muduo/base/Timestamp.h"
 #include "muduo/net/Callbacks.h"
 #include "muduo/net/TimerId.h"
 
@@ -67,7 +67,9 @@ public:
   [[nodiscard]] TimerId runAt(Timestamp time, F &&cb) {
     return runAt(time, TimerCallback(std::forward<F>(cb)));
   }
+#if MUDUO_ENABLE_LEGACY_COMPAT
   [[nodiscard]] TimerId runAfter(double delaySeconds, TimerCallback cb);
+#endif
   [[nodiscard]] TimerId runAfter(std::chrono::microseconds delay,
                                  TimerCallback cb);
   template <typename Rep, typename Period>
@@ -77,18 +79,22 @@ public:
         std::chrono::duration_cast<std::chrono::microseconds>(delay),
         std::move(cb));
   }
+#if MUDUO_ENABLE_LEGACY_COMPAT
   template <typename F>
     requires CallbackBindable<F, TimerCallback>
   [[nodiscard]] TimerId runAfter(double delaySeconds, F &&cb) {
     return runAfter(delaySeconds, TimerCallback(std::forward<F>(cb)));
   }
+#endif
   template <typename Rep, typename Period, typename F>
     requires CallbackBindable<F, TimerCallback>
   [[nodiscard]] TimerId runAfter(std::chrono::duration<Rep, Period> delay,
                                  F &&cb) {
     return runAfter(delay, TimerCallback(std::forward<F>(cb)));
   }
+#if MUDUO_ENABLE_LEGACY_COMPAT
   [[nodiscard]] TimerId runEvery(double intervalSeconds, TimerCallback cb);
+#endif
   [[nodiscard]] TimerId runEvery(std::chrono::microseconds interval,
                                  TimerCallback cb);
   template <typename Rep, typename Period>
@@ -98,11 +104,13 @@ public:
         std::chrono::duration_cast<std::chrono::microseconds>(interval),
         std::move(cb));
   }
+#if MUDUO_ENABLE_LEGACY_COMPAT
   template <typename F>
     requires CallbackBindable<F, TimerCallback>
   [[nodiscard]] TimerId runEvery(double intervalSeconds, F &&cb) {
     return runEvery(intervalSeconds, TimerCallback(std::forward<F>(cb)));
   }
+#endif
   template <typename Rep, typename Period, typename F>
     requires CallbackBindable<F, TimerCallback>
   [[nodiscard]] TimerId runEvery(std::chrono::duration<Rep, Period> interval,
@@ -111,7 +119,7 @@ public:
   }
   void cancel(TimerId timerId);
 
-  void wakeup();
+  void wakeup() const;
 
   [[nodiscard]] static EventLoop *getEventLoopOfCurrentThread() noexcept;
 

@@ -12,9 +12,7 @@
 #include <type_traits>
 #include <utility>
 
-#ifndef MUDUO_DISABLE_LEGACY_LOG_MACROS
-#include "muduo/base/StringPiece.h"
-#endif
+#include "muduo/base/CxxFeatures.h"
 
 namespace muduo {
 
@@ -51,8 +49,7 @@ constexpr To down_cast(From *f) {
 
 namespace detail {
 
-#if defined(__cpp_lib_move_only_function) &&                                   \
-    __cpp_lib_move_only_function >= 202110L
+#if MUDUO_HAS_CPP23_MOVE_ONLY_FUNCTION
 template <typename Signature>
 using MoveOnlyFunction = std::move_only_function<Signature>;
 #else

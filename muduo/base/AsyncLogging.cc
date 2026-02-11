@@ -2,13 +2,13 @@
 
 #include "muduo/base/CurrentThread.h"
 #include "muduo/base/LogFile.h"
+#include "muduo/base/Print.h"
 
 #include <algorithm>
 #include <array>
 #include <bit>
 #include <chrono>
 #include <format>
-#include <iostream>
 #include <iterator>
 #include <ranges>
 
@@ -83,13 +83,19 @@ size_t AsyncLogging::shardIndex() const noexcept {
   return cached;
 }
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
 void AsyncLogging::append(const char *logline, int len) {
+  append(std::string_view{logline, static_cast<size_t>(len)});
+}
+#endif
+
+void AsyncLogging::append(std::string_view logline) {
   auto &shard = shards_.at(shardIndex());
-  bool wakeup = false;
+  bool needWakeup = false;
   {
     std::scoped_lock lock(shard.mutex);
-    if (shard.currentBuffer->avail() >= len) {
-      shard.currentBuffer->append(logline, static_cast<size_t>(len));
+    if (shard.currentBuffer->avail() >= static_cast<int>(logline.size())) {
+      shard.currentBuffer->append(logline);
       return;
     }
 
@@ -99,20 +105,19 @@ void AsyncLogging::append(const char *logline, int len) {
     } else {
       shard.currentBuffer = acquireBuffer();
     }
-    shard.currentBuffer->append(logline, static_cast<size_t>(len));
-    wakeup = true;
+    shard.currentBuffer->append(logline);
+    needWakeup = true;
   }
 
-  if (wakeup) {
+  if (needWakeup) {
     wakeup_.release();
   }
 }
 
 void AsyncLogging::start() {
-  if (bool expected = false;
-      !started_.compare_exchange_strong(expected, true,
-                                        std::memory_order_release,
-                                        std::memory_order_relaxed)) {
+  if (bool expected = false; !started_.compare_exchange_strong(
+          expected, true, std::memory_order_release,
+          std::memory_order_relaxed)) {
     return;
   }
 
@@ -121,10 +126,9 @@ void AsyncLogging::start() {
 }
 
 void AsyncLogging::stop() {
-  if (bool expected = true;
-      !started_.compare_exchange_strong(expected, false,
-                                        std::memory_order_acq_rel,
-                                        std::memory_order_relaxed)) {
+  if (bool expected = true; !started_.compare_exchange_strong(
+          expected, false, std::memory_order_acq_rel,
+          std::memory_order_relaxed)) {
     return;
   }
   if (thread_.joinable()) {
@@ -197,8 +201,8 @@ void AsyncLogging::threadFunc(std::stop_token stopToken) {
     }
 
     if (buffersToWrite.size() > 25) {
-      const auto nowSec =
-          std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
+      const auto nowSec = std::chrono::floor<std::chrono::seconds>(
+          std::chrono::system_clock::now());
 
       std::array<char, 256> buf{};
       const auto result = std::format_to_n(
@@ -207,17 +211,16 @@ void AsyncLogging::threadFunc(std::stop_token stopToken) {
           nowSec, buffersToWrite.size() - 2);
       const size_t safeLen = std::min<size_t>(result.size, buf.size() - 1);
       std::string_view dropped(buf.data(), safeLen);
-      std::cerr.write(dropped.data(), static_cast<std::streamsize>(dropped.size()));
-      std::cerr.flush();
+      muduo::io::eprint(dropped);
+      muduo::io::eflush();
       output.append(dropped);
       buffersToWrite.erase(std::ranges::next(buffersToWrite.begin(), 2),
                            buffersToWrite.end());
     }
 
-    std::ranges::for_each(buffersToWrite,
-                          [&output](const BufferPtr &buffer) {
-                            output.append(buffer->toStringView());
-                          });
+    std::ranges::for_each(buffersToWrite, [&output](const BufferPtr &buffer) {
+      output.append(buffer->toStringView());
+    });
 
     output.flush();
 
@@ -226,12 +229,11 @@ void AsyncLogging::threadFunc(std::stop_token stopToken) {
       const size_t available = buffersToWrite.size();
       const size_t toMove = std::min(needed, available);
 
-      auto src = std::ranges::subrange(
-          buffersToWrite.begin(), buffersToWrite.begin() + toMove);
+      auto src = std::ranges::subrange(buffersToWrite.begin(),
+                                       buffersToWrite.begin() + toMove);
       std::ranges::move(src, std::back_inserter(spareBuffers));
     }
     buffersToWrite.clear();
-
   }
 
   collect();
@@ -241,9 +243,8 @@ void AsyncLogging::threadFunc(std::stop_token stopToken) {
 
   output.flush();
 
-  std::ranges::for_each(spareBuffers, [this](BufferPtr &buf) {
-    recycleBuffer(std::move(buf));
-  });
+  std::ranges::for_each(
+      spareBuffers, [this](BufferPtr &buf) { recycleBuffer(std::move(buf)); });
   std::ranges::for_each(buffersToWrite, [this](BufferPtr &buf) {
     recycleBuffer(std::move(buf));
   });

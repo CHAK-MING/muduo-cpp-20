@@ -1,6 +1,6 @@
 # muduo-cpp-20
 
-**Version:** 0.1.0
+**Version:** 0.2.0
 
 `muduo-cpp-20` is a C++20 modernization of [muduo], a high-performance C++ network library based on the Reactor model.
 
@@ -53,6 +53,8 @@ Use `build.sh` (a wrapper over `CMakePresets.json`).
 - Existing muduo projects: core networking model and common APIs are preserved.
 - New projects: C++20-style APIs are recommended (`string_view`, `span`, and `chrono`).
 - Core library dependencies no longer require Boost.
+- Legacy compatibility APIs are opt-in.
+  Define `MUDUO_ENABLE_LEGACY_COMPAT=1` to enable legacy interfaces and macros.
 
 ### Installed package usage
 
@@ -90,32 +92,34 @@ Benchmark results as of 2026-02-11 (release build, CPU affinity set to core 2 wi
 
 ### Base Layer
 
-| Benchmark | Case | Result |
-|-----------|------|-------:|
-| `logging_bench` | `BM_Logging_Stream` (1 thread, mean/median) | `101 ns/op` (~`9.90M msg/s`) |
-| Original muduo `logging_test` | `nop` | `5,033,092.58 msg/s`, `537.06 MiB/s` |
-| Relative gain | Logging throughput | **~`+96.7%`** |
-| `threadpool_bench` | `BM_ThreadPool_Run/8/0/200000` (mean) | `437.978k tasks/s` |
-| `threadpool_bench` | `BM_ThreadPool_Run/8/1024/200000` (mean) | `394.007k tasks/s` |
+Method: `taskset -c 2`, Google Benchmark `real_time`.
+
+Logging:
+
+| Benchmark | Case | ns/op | msg/s | MiB/s |
+|-----------|------|------:|------:|------:|
+| `logging_bench` | `BM_Logging_Stream` (1 thread, 8-run mean/median) | `106 / 106` | `9.439M / 9.439M` | `1013.46 / 1013.41` |
+| `logging_bench` | `BM_Logging_FormatConst` (1 thread, 8-run mean/median) | `94.3 / 94.3` | `10.607M / 10.607M` | `556.38 / 556.36` |
+| Original muduo `logging_test` | `nop` (5 runs, mean/median) | - | `5.022M / 5.080M` | `526.27 / 532.41` |
+| Relative gain | Stream throughput vs original mean | - | **~`+88.0%`** | **~`+92.6%`** |
 
 ### Network Layer
 
-| Payload | Mean latency | Throughput | QPS |
-|--------:|-------------:|-----------:|----:|
-| 64 B | `29.0 us` | `8.209 MiB/s` | `67.251k/s` |
-| 256 B | `41.0 us` | `21.924 MiB/s` | `44.900k/s` |
-| 1024 B | `40.6 us` | `86.210 MiB/s` | `44.140k/s` |
-| 4096 B | `37.3 us` | `388.952 MiB/s` | `49.786k/s` |
+EVPP-style ping-pong throughput matrix (single client thread, 6s per case, Reactor echo loop):
 
-Network throughput remains in the same order of magnitude as original muduo.
+| Connections | Payload | Throughput | QPS |
+|------------:|--------:|-----------:|----:|
+| 1 | 1024 B | `130.748 MiB/s` | `66.943k/s` |
+| 1 | 4096 B | `494.548 MiB/s` | `63.302k/s` |
+| 1 | 16384 B | `1759.613 MiB/s` | `56.308k/s` |
+| 10 | 1024 B | `129.467 MiB/s` | `66.287k/s` |
+| 10 | 4096 B | `487.468 MiB/s` | `62.396k/s` |
+| 10 | 16384 B | `1747.535 MiB/s` | `55.921k/s` |
+| 100 | 1024 B | `123.394 MiB/s` | `63.178k/s` |
+| 100 | 4096 B | `457.712 MiB/s` | `58.587k/s` |
+| 100 | 16384 B | `1547.394 MiB/s` | `49.517k/s` |
 
-**Reproduce:**
-
-```bash
-./build/release/muduo/net/tests/net_echo_bench
-./build/release/muduo/base/tests/threadpool_bench
-./build/release/muduo/base/tests/logging_bench
-```
+In the same harness, network throughput remains very close to original muduo (same order of magnitude).
 
 ## Roadmap
 

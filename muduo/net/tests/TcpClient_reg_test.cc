@@ -10,11 +10,13 @@
 
 #include <cerrno>
 #include <chrono>
+#include <string_view>
 
 #include <sys/socket.h>
 #include <unistd.h>
 
 namespace {
+using namespace std::string_view_literals;
 
 class TcpClientRegressionTest : public ::testing::Test {};
 
@@ -24,7 +26,7 @@ TEST_F(TcpClientRegressionTest, StopInSameEventIteration) {
   using namespace std::chrono_literals;
 
   muduo::net::EventLoop loop;
-  muduo::net::InetAddress serverAddr("127.0.0.1", 2);
+  muduo::net::InetAddress serverAddr("127.0.0.1"sv, 2);
   muduo::net::TcpClient client(&loop, serverAddr, "TcpClient");
 
   (void)loop.runAfter(0ms, [&client] { client.stop(); });
@@ -39,7 +41,7 @@ TEST_F(TcpClientRegressionTest, DestructInDifferentThread) {
   muduo::Logger::setLogLevel(muduo::Logger::LogLevel::DEBUG);
   muduo::net::EventLoopThread loopThread;
   {
-    muduo::net::InetAddress serverAddr("127.0.0.1", 1234);
+    muduo::net::InetAddress serverAddr("127.0.0.1"sv, 1234);
     muduo::net::TcpClient client(loopThread.startLoop(), serverAddr,
                                  "TcpClient");
     client.connect();
@@ -68,7 +70,8 @@ TEST_F(TcpClientRegressionTest, DestructWhenConnectedAndUnique) {
 
   (void)loop.runAfter(50ms, [&] {
     client = std::make_unique<muduo::net::TcpClient>(
-        &loop, muduo::net::InetAddress("127.0.0.1", port), "TcpClientReg2");
+        &loop, muduo::net::InetAddress("127.0.0.1"sv, port),
+        "TcpClientReg2");
     client->setConnectionCallback(
         [&](const muduo::net::TcpConnectionPtr &conn) {
           if (conn->connected()) {

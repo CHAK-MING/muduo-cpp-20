@@ -43,19 +43,19 @@ size_t countOccurrences(const std::string& s, std::string_view token) {
 
 } // namespace
 
-TEST(Logging, StreamAndFormatApis) {
+TEST(Logging, FormatApiWritesExpectedMessage) {
   clearLogOutput();
 
   muduo::Logger::setOutput(testOutput);
   muduo::Logger::setFlush(testFlush);
   muduo::Logger::setLogLevel(muduo::Logger::LogLevel::INFO);
 
-  muduo::logInfo() << "hello-stream";
   muduo::logInfo("hello-fmt {}", 42);
+  muduo::logInfo("hello-next {}", "ok");
 
   const std::string out = snapshotLogOutput();
-  EXPECT_NE(out.find("hello-stream"), std::string::npos);
   EXPECT_NE(out.find("hello-fmt 42"), std::string::npos);
+  EXPECT_NE(out.find("hello-next ok"), std::string::npos);
 }
 
 TEST(Logging, LogLevelSuppressesInfo) {
@@ -65,9 +65,8 @@ TEST(Logging, LogLevelSuppressesInfo) {
   muduo::Logger::setFlush(testFlush);
   muduo::Logger::setLogLevel(muduo::Logger::LogLevel::WARN);
 
-  muduo::logInfo() << "should-not-appear";
   muduo::logInfo("fmt-should-not-appear {}", 1);
-  muduo::logWarn() << "warn-appears";
+  muduo::logWarn("warn-appears");
 
   const std::string out = snapshotLogOutput();
   EXPECT_EQ(out.find("should-not-appear"), std::string::npos);
@@ -82,11 +81,11 @@ TEST(Logging, LogLevelCoverageAcrossTraceToError) {
   muduo::Logger::setFlush(testFlush);
   muduo::Logger::setLogLevel(muduo::Logger::LogLevel::INFO);
 
-  muduo::logTrace() << "trace-hidden";
-  muduo::logDebug() << "debug-hidden";
-  muduo::logInfo() << "info-visible";
-  muduo::logWarn() << "warn-visible";
-  muduo::logError() << "error-visible";
+  muduo::logTrace("trace-hidden");
+  muduo::logDebug("debug-hidden");
+  muduo::logInfo("info-visible");
+  muduo::logWarn("warn-visible");
+  muduo::logError("error-visible");
 
   std::string out = snapshotLogOutput();
   EXPECT_EQ(out.find("trace-hidden"), std::string::npos);
@@ -97,8 +96,8 @@ TEST(Logging, LogLevelCoverageAcrossTraceToError) {
 
   clearLogOutput();
   muduo::Logger::setLogLevel(muduo::Logger::LogLevel::TRACE);
-  muduo::logTrace() << "trace-visible";
-  muduo::logDebug() << "debug-visible";
+  muduo::logTrace("trace-visible");
+  muduo::logDebug("debug-visible");
   out = snapshotLogOutput();
   EXPECT_NE(out.find("trace-visible"), std::string::npos);
   EXPECT_NE(out.find("debug-visible"), std::string::npos);
@@ -134,21 +133,4 @@ TEST(Logging, MultiThreadStressNoLoss) {
   const std::string out = snapshotLogOutput();
   const size_t count = countOccurrences(out, "mt-thread=");
   EXPECT_EQ(count, static_cast<size_t>(kThreads * kPerThread));
-}
-
-TEST(Logging, LegacySourceFileCtorAndCheckNotNull) {
-  clearLogOutput();
-  muduo::Logger::setOutput(testOutput);
-  muduo::Logger::setFlush(testFlush);
-  muduo::Logger::setLogLevel(muduo::Logger::LogLevel::INFO);
-
-  muduo::Logger(muduo::Logger::SourceFile(__FILE__), __LINE__).stream()
-      << "legacy-ctor";
-
-  int value = 42;
-  int *const ptr = CHECK_NOTNULL(&value);
-  EXPECT_EQ(ptr, &value);
-
-  const std::string out = snapshotLogOutput();
-  EXPECT_NE(out.find("legacy-ctor"), std::string::npos);
 }

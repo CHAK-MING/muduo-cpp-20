@@ -18,7 +18,7 @@ int createTimerfd() {
   const int timerfd =
       ::timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
   if (timerfd < 0) {
-    LOG_SYSFATAL << "Failed in timerfd_create";
+    muduo::logSysFatal("Failed in timerfd_create");
   }
   return timerfd;
 }
@@ -39,11 +39,10 @@ int createTimerfd() {
 void readTimerfd(int timerfd, Timestamp now) {
   std::uint64_t howmany = 0;
   const ssize_t n = ::read(timerfd, &howmany, sizeof howmany);
-  LOG_TRACE << "TimerQueue::handleRead() " << howmany << " at "
-            << now.toString();
+  muduo::logTrace("TimerQueue::handleRead() {} at {}", howmany, now.toString());
   if (n != static_cast<ssize_t>(sizeof howmany)) {
-    LOG_ERROR << "TimerQueue::handleRead() reads " << n << " bytes instead of "
-              << sizeof(howmany);
+    muduo::logError("TimerQueue::handleRead() reads {} bytes instead of {}", n,
+                    sizeof(howmany));
   }
 }
 
@@ -53,7 +52,7 @@ void resetTimerfd(int timerfd, Timestamp expiration) {
   newValue.it_value = howMuchTimeFromNow(expiration);
 
   if (::timerfd_settime(timerfd, 0, &newValue, &oldValue) != 0) {
-    LOG_SYSERR << "timerfd_settime()";
+    muduo::logSysErr("timerfd_settime()");
   }
 }
 
@@ -77,7 +76,7 @@ TimerQueue::~TimerQueue() {
 }
 
 TimerId TimerQueue::addTimer(TimerCallback cb, Timestamp when,
-                             double interval) {
+                             std::chrono::microseconds interval) {
   auto timer = std::make_unique<Timer>(std::move(cb), when, interval);
   const auto sequence = timer->sequence();
   loop_->runInLoop([this, timer = std::move(timer)]() mutable {

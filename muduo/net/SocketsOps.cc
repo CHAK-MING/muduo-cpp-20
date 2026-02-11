@@ -76,14 +76,14 @@ int sockets::createNonblockingOrDie(sa_family_t family) {
 #if VALGRIND
   int sockfd = ::socket(family, SOCK_STREAM, IPPROTO_TCP);
   if (sockfd < 0) {
-    LOG_SYSFATAL << "sockets::createNonblockingOrDie";
+    muduo::logSysFatal("sockets::createNonblockingOrDie");
   }
   setNonBlockAndCloseOnExec(sockfd);
 #else
   int sockfd =
       ::socket(family, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, IPPROTO_TCP);
   if (sockfd < 0) {
-    LOG_SYSFATAL << "sockets::createNonblockingOrDie";
+    muduo::logSysFatal("sockets::createNonblockingOrDie");
   }
 #endif
   return sockfd;
@@ -92,14 +92,14 @@ int sockets::createNonblockingOrDie(sa_family_t family) {
 void sockets::bindOrDie(int sockfd, const sockaddr *addr) {
   int ret = ::bind(sockfd, addr, static_cast<socklen_t>(sizeof(sockaddr_in6)));
   if (ret < 0) {
-    LOG_SYSFATAL << "sockets::bindOrDie";
+    muduo::logSysFatal("sockets::bindOrDie");
   }
 }
 
 void sockets::listenOrDie(int sockfd) {
   int ret = ::listen(sockfd, SOMAXCONN);
   if (ret < 0) {
-    LOG_SYSFATAL << "sockets::listenOrDie";
+    muduo::logSysFatal("sockets::listenOrDie");
   }
 }
 
@@ -114,7 +114,7 @@ int sockets::accept(int sockfd, sockaddr_in6 *addr) {
 #endif
   if (connfd < 0) {
     int savedErrno = errno;
-    LOG_SYSERR << "Socket::accept";
+    muduo::logSysErr("Socket::accept");
     switch (savedErrno) {
     case EAGAIN:
     case ECONNABORTED:
@@ -132,10 +132,10 @@ int sockets::accept(int sockfd, sockaddr_in6 *addr) {
     case ENOMEM:
     case ENOTSOCK:
     case EOPNOTSUPP:
-      LOG_FATAL << "unexpected error of ::accept " << savedErrno;
+      muduo::logFatal("unexpected error of ::accept {}", savedErrno);
       break;
     default:
-      LOG_FATAL << "unknown error of ::accept " << savedErrno;
+      muduo::logFatal("unknown error of ::accept {}", savedErrno);
       break;
     }
   }
@@ -146,9 +146,11 @@ int sockets::connect(int sockfd, const sockaddr *addr) {
   return ::connect(sockfd, addr, static_cast<socklen_t>(sizeof(sockaddr_in6)));
 }
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
 ssize_t sockets::read(int sockfd, void *buf, size_t count) {
   return ::read(sockfd, buf, count);
 }
+#endif
 
 ssize_t sockets::read(int sockfd, std::span<std::byte> buffer) {
   return ::read(sockfd, buffer.data(), buffer.size_bytes());
@@ -158,9 +160,11 @@ ssize_t sockets::read(int sockfd, std::span<char> buffer) {
   return ::read(sockfd, buffer.data(), buffer.size_bytes());
 }
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
 ssize_t sockets::readv(int sockfd, const iovec *iov, int iovcnt) {
   return ::readv(sockfd, iov, iovcnt);
 }
+#endif
 
 ssize_t sockets::readv(int sockfd, std::span<const iovec> iov) {
   if (iov.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
@@ -170,9 +174,11 @@ ssize_t sockets::readv(int sockfd, std::span<const iovec> iov) {
   return ::readv(sockfd, iov.data(), static_cast<int>(iov.size()));
 }
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
 ssize_t sockets::write(int sockfd, const void *buf, size_t count) {
   return ::write(sockfd, buf, count);
 }
+#endif
 
 ssize_t sockets::write(int sockfd, std::span<const std::byte> buffer) {
   return ::write(sockfd, buffer.data(), buffer.size_bytes());
@@ -184,13 +190,13 @@ ssize_t sockets::write(int sockfd, std::span<const char> buffer) {
 
 void sockets::close(int sockfd) {
   if (::close(sockfd) < 0) {
-    LOG_SYSERR << "sockets::close";
+    muduo::logSysErr("sockets::close");
   }
 }
 
 void sockets::shutdownWrite(int sockfd) {
   if (::shutdown(sockfd, SHUT_WR) < 0) {
-    LOG_SYSERR << "sockets::shutdownWrite";
+    muduo::logSysErr("sockets::shutdownWrite");
   }
 }
 
@@ -255,6 +261,7 @@ size_t sockets::toIpLen(char *buf, size_t size, const sockaddr *addr) {
   return 0;
 }
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
 void sockets::toIpPort(char *buf, size_t size, const sockaddr *addr) {
   (void)toIpPortLen(buf, size, addr);
 }
@@ -262,22 +269,35 @@ void sockets::toIpPort(char *buf, size_t size, const sockaddr *addr) {
 void sockets::toIp(char *buf, size_t size, const sockaddr *addr) {
   (void)toIpLen(buf, size, addr);
 }
+#endif
 
-void sockets::fromIpPort(const char *ip, uint16_t port, sockaddr_in *addr) {
+void sockets::fromIpPort(std::string_view ip, uint16_t port, sockaddr_in *addr) {
   addr->sin_family = AF_INET;
   addr->sin_port = hostToNetwork16(port);
-  if (::inet_pton(AF_INET, ip, &addr->sin_addr) <= 0) {
-    LOG_SYSERR << "sockets::fromIpPort";
+  const std::string ipText(ip);
+  if (::inet_pton(AF_INET, ipText.c_str(), &addr->sin_addr) <= 0) {
+    muduo::logSysErr("sockets::fromIpPort");
   }
+}
+
+void sockets::fromIpPort(std::string_view ip, uint16_t port, sockaddr_in6 *addr) {
+  addr->sin6_family = AF_INET6;
+  addr->sin6_port = hostToNetwork16(port);
+  const std::string ipText(ip);
+  if (::inet_pton(AF_INET6, ipText.c_str(), &addr->sin6_addr) <= 0) {
+    muduo::logSysErr("sockets::fromIpPort");
+  }
+}
+
+#if MUDUO_ENABLE_LEGACY_COMPAT
+void sockets::fromIpPort(const char *ip, uint16_t port, sockaddr_in *addr) {
+  fromIpPort(std::string_view{ip == nullptr ? "" : ip}, port, addr);
 }
 
 void sockets::fromIpPort(const char *ip, uint16_t port, sockaddr_in6 *addr) {
-  addr->sin6_family = AF_INET6;
-  addr->sin6_port = hostToNetwork16(port);
-  if (::inet_pton(AF_INET6, ip, &addr->sin6_addr) <= 0) {
-    LOG_SYSERR << "sockets::fromIpPort";
-  }
+  fromIpPort(std::string_view{ip == nullptr ? "" : ip}, port, addr);
 }
+#endif
 
 int sockets::getSocketError(int sockfd) {
   int optval;
@@ -293,7 +313,7 @@ sockaddr_in6 sockets::getLocalAddr(int sockfd) {
   sockaddr_in6 localaddr{};
   auto addrlen = static_cast<socklen_t>(sizeof localaddr);
   if (::getsockname(sockfd, sockaddr_cast(&localaddr), &addrlen) < 0) {
-    LOG_SYSERR << "sockets::getLocalAddr";
+    muduo::logSysErr("sockets::getLocalAddr");
   }
   return localaddr;
 }
@@ -302,7 +322,7 @@ sockaddr_in6 sockets::getPeerAddr(int sockfd) {
   sockaddr_in6 peeraddr{};
   auto addrlen = static_cast<socklen_t>(sizeof peeraddr);
   if (::getpeername(sockfd, sockaddr_cast(&peeraddr), &addrlen) < 0) {
-    LOG_SYSERR << "sockets::getPeerAddr";
+    muduo::logSysErr("sockets::getPeerAddr");
   }
   return peeraddr;
 }

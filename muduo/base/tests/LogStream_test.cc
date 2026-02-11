@@ -76,7 +76,7 @@ TEST(LogStreamCompatibility, FloatingPointPrecisionCoverage) {
 
 TEST(LogStreamCompatibility, FixedBufferAppendRespectsCapacityBoundary) {
   muduo::detail::FixedBuffer<8> buf;
-  buf.append("12345678", 8);
+  buf.append(std::string_view{"12345678"});
   EXPECT_EQ(buf.length(), 8);
   EXPECT_EQ(buf.avail(), 0);
   EXPECT_EQ(buf.toString(), "12345678");
@@ -84,8 +84,8 @@ TEST(LogStreamCompatibility, FixedBufferAppendRespectsCapacityBoundary) {
 
 TEST(LogStreamCompatibility, FixedBufferAppendTruncatesWhenFull) {
   muduo::detail::FixedBuffer<8> buf;
-  buf.append("12345", 5);
-  buf.append("6789", 4);
+  buf.append(std::string_view{"12345"});
+  buf.append(std::string_view{"6789"});
   EXPECT_EQ(buf.length(), 8);
   EXPECT_EQ(buf.toString(), "12345678");
 }
@@ -95,11 +95,4 @@ TEST(LogStreamCompatibility, StringViewAppendAtExactSmallBufferBoundary) {
   std::string payload(muduo::detail::kSmallBuffer, 'x');
   stream << std::string_view(payload);
   EXPECT_EQ(stream.buffer().length(), static_cast<int>(muduo::detail::kSmallBuffer));
-}
-
-TEST(LogStreamCompatibility, NullCStringWritesLiteralNull) {
-  muduo::LogStream stream;
-  const char *nullStr = nullptr;
-  stream << nullStr;
-  EXPECT_EQ(stream.buffer().toString(), "(null)");
 }

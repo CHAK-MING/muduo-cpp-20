@@ -4,6 +4,9 @@
 
 #include <ctime>
 #include <filesystem>
+#include <string_view>
+
+using namespace std::string_view_literals;
 
 namespace {
 
@@ -25,7 +28,7 @@ muduo::DateTime parseLocal(const char* s) {
 } // namespace
 
 TEST(TimeZoneCompatibility, FixedOffsetRoundTrip) {
-  muduo::TimeZone tz(8 * 3600, "CST");
+  muduo::TimeZone tz(8 * 3600, "CST"sv);
   const std::int64_t gmt = toEpoch(muduo::DateTime(2014, 4, 3, 0, 0, 0));
 
   int offset = 0;
@@ -57,7 +60,7 @@ TEST(TimeZoneCompatibility, LoadZoneAndZoneFile) {
   if (!std::filesystem::exists(kUtcZoneFile)) {
     GTEST_SKIP() << "zoneinfo file not found: " << kUtcZoneFile;
   }
-  const auto utc = muduo::TimeZone::loadZoneFile(kUtcZoneFile);
+  const auto utc = muduo::TimeZone::loadZoneFile(std::string_view{kUtcZoneFile});
   ASSERT_TRUE(utc.valid());
   EXPECT_EQ(utc.toLocalTime(gmt).toIsoString(), muduo::TimeZone::toUtcTime(gmt).toIsoString());
 }
@@ -207,7 +210,7 @@ TEST(TimeZoneCompatibility, InvalidZoneHandling) {
   const auto invalid = muduo::TimeZone::loadZone("Not/A_Real_Zone");
   EXPECT_FALSE(invalid.valid());
   EXPECT_FALSE(muduo::TimeZone::loadZone("").valid());
-  EXPECT_FALSE(muduo::TimeZone::loadZoneFile("/definitely/not/exist").valid());
+  EXPECT_FALSE(muduo::TimeZone::loadZoneFile("/definitely/not/exist"sv).valid());
 
   EXPECT_THROW((void)invalid.toLocalTime(0), std::runtime_error);
   EXPECT_THROW((void)invalid.fromLocalTime(muduo::DateTime(2024, 1, 1, 0, 0, 0)),

@@ -40,31 +40,31 @@ InetAddress::InetAddress(uint16_t portArg, bool loopbackOnly, bool ipv6) {
   setSockAddrIn(addr4);
 }
 
-InetAddress::InetAddress(StringArg ip, uint16_t portArg, bool ipv6) {
-  storage_ = {};
-
-  const auto ipView = ip.as_string_view();
-  const bool treatAsIpv6 = ipv6 || ipView.find(':') != std::string_view::npos;
+InetAddress::InetAddress(std::string_view ip, uint16_t portArg, bool ipv6)
+    : storage_{} {
+  const bool treatAsIpv6 = ipv6 || ip.find(':') != std::string_view::npos;
   if (treatAsIpv6) {
     sockaddr_in6 addr6{};
-    sockets::fromIpPort(ip.c_str(), portArg, &addr6);
+    sockets::fromIpPort(ip, portArg, &addr6);
     setSockAddrIn6Internal(addr6);
     return;
   }
 
   sockaddr_in addr4{};
-  sockets::fromIpPort(ip.c_str(), portArg, &addr4);
+  sockets::fromIpPort(ip, portArg, &addr4);
   setSockAddrIn(addr4);
 }
 
-InetAddress::InetAddress(const char *ip, uint16_t portArg, bool ipv6)
-    : InetAddress(StringArg(ip), portArg, ipv6) {}
+#if MUDUO_ENABLE_LEGACY_COMPAT
+InetAddress::InetAddress(StringArg ip, uint16_t portArg, bool ipv6)
+    : InetAddress(ip.as_string_view(), portArg, ipv6) {}
 
-InetAddress::InetAddress(std::string_view ip, uint16_t portArg, bool ipv6)
-    : InetAddress(StringArg(ip), portArg, ipv6) {}
+InetAddress::InetAddress(const char *ip, uint16_t portArg, bool ipv6)
+    : InetAddress(std::string_view{ip == nullptr ? "" : ip}, portArg, ipv6) {}
 
 InetAddress::InetAddress(const string &ip, uint16_t portArg, bool ipv6)
-    : InetAddress(StringArg(ip), portArg, ipv6) {}
+    : InetAddress(std::string_view{ip}, portArg, ipv6) {}
+#endif
 
 InetAddress::InetAddress(const sockaddr_in &addr) {
   storage_ = {};
@@ -112,53 +112,63 @@ uint16_t InetAddress::portNetEndian() const {
   return 0;
 }
 
-bool InetAddress::resolve(StringArg hostname, InetAddress *out) {
-  assert(out != nullptr);
+#if MUDUO_ENABLE_LEGACY_COMPAT
+bool InetAddress::resolve(StringArg hostname, InetAddress *result) {
+  return resolve(hostname.as_string_view(), result);
+}
 
-  auto family = out->family();
+bool InetAddress::resolve(const char *hostname, InetAddress *result) {
+  return resolve(std::string_view{hostname == nullptr ? "" : hostname}, result);
+}
+#endif
+
+bool InetAddress::resolve(std::string_view hostname, InetAddress *result) {
+  assert(result != nullptr);
+
+  auto family = result->family();
   if (family != AF_INET && family != AF_INET6) {
     family = AF_UNSPEC;
   }
-  return resolve(hostname, out, family);
+  return resolve(hostname, result, family);
 }
 
-bool InetAddress::resolve(const char *hostname, InetAddress *out) {
-  return resolve(StringArg(hostname), out);
-}
-
-bool InetAddress::resolve(std::string_view hostname, InetAddress *out) {
-  return resolve(StringArg(hostname), out);
-}
-
-bool InetAddress::resolve(StringArg hostname, InetAddress *out,
+#if MUDUO_ENABLE_LEGACY_COMPAT
+bool InetAddress::resolve(StringArg hostname, InetAddress *result,
                           sa_family_t family) {
-  assert(out != nullptr);
+  return resolve(hostname.as_string_view(), result, family);
+}
+#endif
+
+bool InetAddress::resolve(std::string_view hostname, InetAddress *result,
+                          sa_family_t family) {
+  assert(result != nullptr);
+  const std::string hostnameStr(hostname);
 
   addrinfo hints{};
   hints.ai_family = family;
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_flags = AI_ADDRCONFIG;
 
-  addrinfo *result = nullptr;
-  const int ret = ::getaddrinfo(hostname.c_str(), nullptr, &hints, &result);
+  addrinfo *resultList = nullptr;
+  const int ret = ::getaddrinfo(hostnameStr.c_str(), nullptr, &hints, &resultList);
   if (ret != 0) {
-    LOG_ERROR << "InetAddress::resolve getaddrinfo failed for "
-              << hostname.c_str() << ": " << gai_strerror(ret);
+    muduo::logError("InetAddress::resolve getaddrinfo failed for {}: {}",
+                    hostnameStr, gai_strerror(ret));
     return false;
   }
 
   bool resolved = false;
-  for (auto *ai = result; ai != nullptr; ai = ai->ai_next) {
+  for (auto *ai = resultList; ai != nullptr; ai = ai->ai_next) {
     if (ai->ai_family == AF_INET &&
         ai->ai_addrlen >= static_cast<socklen_t>(sizeof(sockaddr_in))) {
       const auto *addr4 = sockets::sockaddr_in_cast(ai->ai_addr);
-      const auto savedPort = out->portNetEndian();
-      out->storage_ = {};
+      const auto savedPort = result->portNetEndian();
+      result->storage_ = {};
       sockaddr_in dst{};
       dst.sin_family = AF_INET;
       dst.sin_port = savedPort;
-      out->setSockAddrIn(dst);
-      out->setAddress(addr4->sin_addr);
+      result->setSockAddrIn(dst);
+      result->setAddress(addr4->sin_addr);
       resolved = true;
       break;
     }
@@ -166,22 +176,22 @@ bool InetAddress::resolve(StringArg hostname, InetAddress *out,
     if (ai->ai_family == AF_INET6 &&
         ai->ai_addrlen >= static_cast<socklen_t>(sizeof(sockaddr_in6))) {
       const auto *addr6 = sockets::sockaddr_in6_cast(ai->ai_addr);
-      const auto savedPort = out->portNetEndian();
-      out->storage_ = {};
+      const auto savedPort = result->portNetEndian();
+      result->storage_ = {};
       sockaddr_in6 dst{};
       dst.sin6_family = AF_INET6;
       dst.sin6_port = savedPort;
-      out->setSockAddrIn6Internal(dst);
-      out->setAddress(addr6->sin6_addr);
+      result->setSockAddrIn6Internal(dst);
+      result->setAddress(addr6->sin6_addr);
       resolved = true;
       break;
     }
   }
 
-  ::freeaddrinfo(result);
+  ::freeaddrinfo(resultList);
   if (!resolved) {
-    LOG_ERROR << "InetAddress::resolve no usable address for "
-              << hostname.c_str();
+    muduo::logError("InetAddress::resolve no usable address for {}",
+                    hostnameStr);
   }
   return resolved;
 }

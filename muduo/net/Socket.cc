@@ -82,11 +82,11 @@ void Socket::setReusePort(bool on) const {
       setSockOptOrLog(SOL_SOCKET, SO_REUSEPORT, &optval,
                       static_cast<socklen_t>(sizeof optval), "SO_REUSEPORT");
   if (!ok && on) {
-    LOG_SYSERR << "SO_REUSEPORT failed.";
+    muduo::logSysErr("SO_REUSEPORT failed");
   }
 #else
   if (on) {
-    LOG_ERROR << "SO_REUSEPORT is not supported.";
+    muduo::logError("SO_REUSEPORT is not supported");
   }
 #endif
 }
@@ -104,8 +104,7 @@ bool Socket::setSockOptOrLog(int level, int option, const void *optval,
     return true;
   }
 
-  LOG_SYSERR << "Socket::setSockOpt(" << optionName << ") failed at "
-             << loc.file_name() << ":" << loc.line() << " ("
-             << loc.function_name() << ")";
+  muduo::logSysErr("Socket::setSockOpt({}) failed at {}:{} ({})", optionName,
+                   loc.file_name(), loc.line(), loc.function_name());
   return false;
 }

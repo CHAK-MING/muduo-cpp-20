@@ -6,8 +6,12 @@
 
 #include "rpc.pb.h"
 
+#include <string_view>
+
 namespace muduo::net {
 namespace {
+using namespace std::string_view_literals;
+
 void rpcMessageCallback(const TcpConnectionPtr &, const RpcMessagePtr &, Timestamp) {}
 
 TEST(RpcCodecTest, EncodeDecodeMatchesExpectedWire) {
@@ -29,18 +33,18 @@ TEST(RpcCodecTest, EncodeDecodeMatchesExpectedWire) {
   {
     RpcCodec codec(rpcMessageCallback);
     codec.fillEmptyBuffer(&buf1, message);
-    s1 = buf1.toStringPiece().as_string();
+    s1 = std::string(buf1.readableChars());
   }
 
   {
     MessagePtr gotMessage;
     ProtobufCodecLite codec(
-        &RpcMessage::default_instance(), "RPC0",
+        &RpcMessage::default_instance(), "RPC0"sv,
         [&gotMessage](const TcpConnectionPtr &, const MessagePtr &msg, Timestamp) {
           gotMessage = msg;
         });
     codec.fillEmptyBuffer(&buf2, message);
-    s2 = buf2.toStringPiece().as_string();
+    s2 = std::string(buf2.readableChars());
 
     codec.onMessage(TcpConnectionPtr(), &buf1, Timestamp::now());
     ASSERT_TRUE(static_cast<bool>(gotMessage));
@@ -59,7 +63,7 @@ TEST(RpcCodecTest, DecodeWithCustomTag) {
   Buffer buf;
   MessagePtr gotMessage;
   ProtobufCodecLite codec(
-      &RpcMessage::default_instance(), "XYZ",
+      &RpcMessage::default_instance(), "XYZ"sv,
       [&gotMessage](const TcpConnectionPtr &, const MessagePtr &msg, Timestamp) {
         gotMessage = msg;
       });
@@ -79,7 +83,7 @@ TEST(RpcCodecTest, DecodeFailsOnChecksumError) {
   MessagePtr gotMessage;
   ProtobufCodecLite::ErrorCode gotError = ProtobufCodecLite::kNoError;
   ProtobufCodecLite codec(
-      &RpcMessage::default_instance(), "RPC0",
+      &RpcMessage::default_instance(), "RPC0"sv,
       [&gotMessage](const TcpConnectionPtr &, const MessagePtr &msg, Timestamp) {
         gotMessage = msg;
       },
@@ -87,7 +91,7 @@ TEST(RpcCodecTest, DecodeFailsOnChecksumError) {
       [&gotError](const TcpConnectionPtr &, Buffer *, Timestamp,
                   ProtobufCodecLite::ErrorCode code) { gotError = code; });
   codec.fillEmptyBuffer(&buf, message);
-  std::string corrupted = buf.toStringPiece().as_string();
+  std::string corrupted(buf.readableChars());
   ASSERT_FALSE(corrupted.empty());
   corrupted.back() = static_cast<char>(corrupted.back() ^ 0x01);
   Buffer bad;
@@ -107,12 +111,12 @@ TEST(RpcCodecTest, DecodeFailsOnUnknownTag) {
   MessagePtr gotMessage;
   ProtobufCodecLite::ErrorCode gotError = ProtobufCodecLite::kNoError;
   ProtobufCodecLite encoder(
-      &RpcMessage::default_instance(), "RPC0",
+      &RpcMessage::default_instance(), "RPC0"sv,
       [&gotMessage](const TcpConnectionPtr &, const MessagePtr &msg, Timestamp) {
         gotMessage = msg;
       });
   ProtobufCodecLite decoder(
-      &RpcMessage::default_instance(), "XYZ0",
+      &RpcMessage::default_instance(), "XYZ0"sv,
       [&gotMessage](const TcpConnectionPtr &, const MessagePtr &msg, Timestamp) {
         gotMessage = msg;
       },
@@ -136,11 +140,12 @@ TEST(RpcCodecTest, RawCallbackCanDropFrame) {
   ProtobufCodecLite::ErrorCode gotError = ProtobufCodecLite::kNoError;
   int rawCount = 0;
   ProtobufCodecLite codec(
-      &RpcMessage::default_instance(), "RPC0",
+      &RpcMessage::default_instance(), "RPC0"sv,
       [&gotMessage](const TcpConnectionPtr &, const MessagePtr &msg, Timestamp) {
         gotMessage = msg;
       },
-      [&rawCount](const TcpConnectionPtr &, StringPiece, Timestamp) {
+      [&rawCount](const TcpConnectionPtr &, ProtobufCodecLite::RawMessagePayload,
+                  Timestamp) {
         ++rawCount;
         return false;
       },
@@ -165,7 +170,7 @@ TEST(RpcCodecTest, RejectsInvalidLengthFrame) {
   MessagePtr gotMessage;
   ProtobufCodecLite::ErrorCode gotError = ProtobufCodecLite::kNoError;
   ProtobufCodecLite codec(
-      &RpcMessage::default_instance(), "RPC0",
+      &RpcMessage::default_instance(), "RPC0"sv,
       [&gotMessage](const TcpConnectionPtr &, const MessagePtr &msg, Timestamp) {
         gotMessage = msg;
       },

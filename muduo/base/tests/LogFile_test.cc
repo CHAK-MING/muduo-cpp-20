@@ -5,8 +5,11 @@
 #include <filesystem>
 #include <format>
 #include <string>
+#include <string_view>
 #include <unistd.h>
 #include <vector>
+
+using namespace std::string_view_literals;
 
 namespace {
 
@@ -34,10 +37,10 @@ TEST(LogFile, AppendCreatesLogFile) {
 
   {
     muduo::LogFile file(basename, 1024 * 1024, false);
-    file.append("abc\n", 4);
-    file.append("def\n", 4);
-    file.append(muduo::StringPiece("ghi\n"));
-    file.append(muduo::StringArg("jkl\n"));
+    file.append("abc\n"sv);
+    file.append("def\n"sv);
+    file.append("ghi\n"sv);
+    file.append("jkl\n"sv);
     file.flush();
   }
 

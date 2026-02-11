@@ -1,5 +1,6 @@
 #include "muduo/net/TcpConnection.h"
 
+#include "muduo/base/CxxFeatures.h"
 #include "muduo/base/Logging.h"
 #include "muduo/net/Channel.h"
 #include "muduo/net/EventLoop.h"
@@ -8,15 +9,17 @@
 
 #include <array>
 #include <cerrno>
+#include <chrono>
 #include <netinet/tcp.h>
+#include <utility>
 #include <vector>
 
 namespace muduo::net {
 
 void defaultConnectionCallback(const TcpConnectionPtr &conn) {
-  LOG_TRACE << conn->localAddress().toIpPort() << " -> "
-            << conn->peerAddress().toIpPort() << " is "
-            << (conn->connected() ? "UP" : "DOWN");
+  muduo::logTrace("{} -> {} is {}", conn->localAddress().toIpPort(),
+                  conn->peerAddress().toIpPort(),
+                  conn->connected() ? "UP" : "DOWN");
 }
 
 void defaultMessageCallback([[maybe_unused]] const TcpConnectionPtr &conn,
@@ -29,22 +32,23 @@ TcpConnection::TcpConnection(EventLoop *loop, string name, int sockfd,
                              InetAddress localAddr, InetAddress peerAddr)
     : loop_(muduo::CheckNotNull("loop", loop)), name_(std::move(name)),
       socket_(std::make_unique<Socket>(sockfd)),
-      channel_(std::make_unique<Channel>(loop, sockfd)),
-      localAddr_(std::move(localAddr)), peerAddr_(std::move(peerAddr)) {
+      channel_(std::make_unique<Channel>(loop, sockfd)), localAddr_(localAddr),
+      peerAddr_(peerAddr) {
   channel_->setReadCallback(
       [this](Timestamp receiveTime) { handleRead(receiveTime); });
   channel_->setWriteCallback([this] { handleWrite(); });
   channel_->setCloseCallback([this] { handleClose(); });
   channel_->setErrorCallback([this] { handleError(); });
 
-  LOG_DEBUG << "TcpConnection::ctor[" << name_ << "] at " << this
-            << " fd=" << sockfd;
+  muduo::logDebug("TcpConnection::ctor[{}] at {} fd={}", name_,
+                  static_cast<const void *>(this), sockfd);
   socket_->setKeepAlive(true);
 }
 
 TcpConnection::~TcpConnection() {
-  LOG_DEBUG << "TcpConnection::dtor[" << name_ << "] at " << this
-            << " fd=" << channel_->fd() << " state=" << stateToString();
+  muduo::logDebug("TcpConnection::dtor[{}] at {} fd={} state={}", name_,
+                  static_cast<const void *>(this), channel_->fd(),
+                  stateToString());
   assert(state_ == StateE::kDisconnected);
 }
 
@@ -58,26 +62,30 @@ string TcpConnection::getTcpInfoString() const {
   return string{buf.data()};
 }
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
 void TcpConnection::send(const void *message, int len) {
-  send(std::as_bytes(std::span{static_cast<const char *>(message),
-                               static_cast<size_t>(len)}));
+  send(std::as_bytes(
+      std::span{static_cast<const char *>(message), static_cast<size_t>(len)}));
 }
+#endif
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
 void TcpConnection::send(const char *message) {
   send(std::string_view{message});
 }
+#endif
 
 void TcpConnection::send(const string &message) {
   send(std::string_view{message});
 }
 
-void TcpConnection::send(string &&message) {
-  send(std::string_view{message});
-}
+void TcpConnection::send(string &&message) { send(std::string_view{message}); }
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
 void TcpConnection::send(StringPiece message) {
   send(std::string_view{message.data(), message.size()});
 }
+#endif
 
 void TcpConnection::send(std::string_view message) {
   send(std::as_bytes(std::span{message.data(), message.size()}));
@@ -127,7 +135,7 @@ void TcpConnection::sendInLoop(std::span<const std::byte> message) {
   loop_->assertInLoopThread();
 
   if (state_ == StateE::kDisconnected) {
-    LOG_WARN << "TcpConnection::sendInLoop disconnected, give up writing";
+    muduo::logWarn("TcpConnection::sendInLoop disconnected, give up writing");
     return;
   }
 
@@ -151,7 +159,7 @@ void TcpConnection::sendInLoop(std::span<const std::byte> message) {
     } else {
       nwrote = 0;
       if (errno != EWOULDBLOCK) {
-        LOG_SYSERR << "TcpConnection::sendInLoop";
+        muduo::logSysErr("TcpConnection::sendInLoop");
         if (errno == EPIPE || errno == ECONNRESET) {
           faultError = true;
         }
@@ -208,17 +216,25 @@ void TcpConnection::forceClose() {
   }
 }
 
-void TcpConnection::forceCloseWithDelay(double seconds) {
+void TcpConnection::forceCloseWithDelay(std::chrono::microseconds delay) {
   if (state_ == StateE::kConnected || state_ == StateE::kDisconnecting) {
     setState(StateE::kDisconnecting);
     const auto weakSelf = weak_from_this();
-    (void)loop_->runAfter(seconds, [weakSelf] {
+    (void)loop_->runAfter(delay, [weakSelf] {
       if (const auto self = weakSelf.lock()) {
         self->forceClose();
       }
     });
   }
 }
+
+#if MUDUO_ENABLE_LEGACY_COMPAT
+void TcpConnection::forceCloseWithDelay(double seconds) {
+  forceCloseWithDelay(
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::duration<double>{seconds}));
+}
+#endif
 
 void TcpConnection::forceCloseInLoop() {
   loop_->assertInLoopThread();
@@ -301,7 +317,7 @@ void TcpConnection::handleRead(Timestamp receiveTime) {
     handleClose();
   } else {
     errno = savedErrno;
-    LOG_SYSERR << "TcpConnection::handleRead";
+    muduo::logSysErr("TcpConnection::handleRead");
     handleError();
   }
 }
@@ -309,12 +325,13 @@ void TcpConnection::handleRead(Timestamp receiveTime) {
 void TcpConnection::handleWrite() {
   loop_->assertInLoopThread();
   if (!channel_->isWriting()) {
-    LOG_TRACE << "TcpConnection fd = " << channel_->fd()
-              << " is down, no more writing";
+    muduo::logTrace("TcpConnection fd = {} is down, no more writing",
+                    channel_->fd());
     return;
   }
 
-  const ssize_t n = sockets::write(channel_->fd(), outputBuffer_.readableSpan());
+  const ssize_t n =
+      sockets::write(channel_->fd(), outputBuffer_.readableSpan());
   if (n > 0) {
     outputBuffer_.retrieve(static_cast<size_t>(n));
     if (outputBuffer_.readableBytes() == 0) {
@@ -333,14 +350,14 @@ void TcpConnection::handleWrite() {
       }
     }
   } else {
-    LOG_SYSERR << "TcpConnection::handleWrite";
+    muduo::logSysErr("TcpConnection::handleWrite");
   }
 }
 
 void TcpConnection::handleClose() {
   loop_->assertInLoopThread();
-  LOG_TRACE << "TcpConnection fd = " << channel_->fd()
-            << " state = " << stateToString();
+  muduo::logTrace("TcpConnection fd = {} state = {}", channel_->fd(),
+                  stateToString());
   assert(state_ == StateE::kConnected || state_ == StateE::kDisconnecting);
 
   setState(StateE::kDisconnected);
@@ -357,8 +374,8 @@ void TcpConnection::handleClose() {
 
 void TcpConnection::handleError() {
   const int err = sockets::getSocketError(channel_->fd());
-  LOG_ERROR << "TcpConnection::handleError [" << name_ << "] - SO_ERROR = "
-            << err << " " << strerror_tl(err);
+  muduo::logError("TcpConnection::handleError [{}] - SO_ERROR = {} {}", name_,
+                  err, strerror_tl(err));
 }
 
 const char *TcpConnection::stateToString() const {
@@ -372,7 +389,11 @@ const char *TcpConnection::stateToString() const {
   case StateE::kDisconnecting:
     return "kDisconnecting";
   default:
+#if MUDUO_HAS_CPP23_UNREACHABLE
+    std::unreachable();
+#else
     return "unknown";
+#endif
   }
 }
 

@@ -1,9 +1,11 @@
 #pragma once
 
-#include "muduo/base/StringPiece.h"
 #include "muduo/base/Types.h"
 #include "muduo/base/copyable.h"
 #include "muduo/net/Endian.h"
+#if MUDUO_ENABLE_LEGACY_COMPAT
+#include "muduo/base/StringPiece.h"
+#endif
 
 #include <algorithm>
 #include <array>
@@ -57,12 +59,12 @@ public:
   [[nodiscard]] std::string_view readableChars() const {
     return std::string_view{peekAsChar(), readableBytes()};
   }
-  [[nodiscard]] const char *peekAsChar() const {
-    return bytesToChars(peek());
-  }
+  [[nodiscard]] const char *peekAsChar() const { return bytesToChars(peek()); }
 
   [[nodiscard]] const std::byte *findCRLF() const { return findCRLF(peek()); }
-  [[nodiscard]] const char *findCRLFChars() const { return findCRLFChars(peekAsChar()); }
+  [[nodiscard]] const char *findCRLFChars() const {
+    return findCRLFChars(peekAsChar());
+  }
 
   [[nodiscard]] const std::byte *findCRLF(const std::byte *start) const {
     assert(peek() <= start);
@@ -130,6 +132,7 @@ public:
     return result;
   }
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
   [[nodiscard]] StringPiece toStringPiece() const {
     return StringPiece{peekAsChar(), readableBytes()};
   }
@@ -137,6 +140,7 @@ public:
   void append(StringPiece str) {
     append(std::as_bytes(std::span{str.data(), str.size()}));
   }
+#endif
 
   void append(const string &str) { append(std::string_view{str}); }
 
@@ -144,11 +148,13 @@ public:
     append(std::as_bytes(std::span{str.data(), str.size()}));
   }
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
   void append(const char *str) { append(std::string_view{str}); }
 
   template <size_t N> void append(const char (&str)[N]) {
     append(std::string_view{str, N - 1});
   }
+#endif
 
   void append(const void *data, size_t len) {
     append(std::as_bytes(std::span{static_cast<const char *>(data), len}));

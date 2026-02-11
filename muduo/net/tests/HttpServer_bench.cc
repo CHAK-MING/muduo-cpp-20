@@ -24,7 +24,7 @@ void onRequest(const HttpRequest &req, HttpResponse *resp) {
   }
 
   if (!benchmarkMode) {
-    LOG_WARN << "Not found path=" << req.path();
+    muduo::logWarn("Not found path={}", req.path());
   }
   resp->setStatusCode(HttpResponse::HttpStatusCode::k404NotFound);
   resp->setStatusMessage("Not Found");

@@ -53,7 +53,7 @@ void Acceptor::handleRead() {
     return;
   }
 
-  LOG_SYSERR << "Acceptor::handleRead";
+  muduo::logSysErr("Acceptor::handleRead");
 
   if (errno == EMFILE) {
     ::close(idleFd_);

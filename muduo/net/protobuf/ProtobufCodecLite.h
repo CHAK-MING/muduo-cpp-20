@@ -1,14 +1,17 @@
 #pragma once
 
-#include "muduo/base/StringPiece.h"
 #include "muduo/base/Timestamp.h"
 #include "muduo/base/noncopyable.h"
 #include "muduo/net/Callbacks.h"
+#if MUDUO_ENABLE_LEGACY_COMPAT
+#include "muduo/base/StringPiece.h"
+#endif
 
 #include <concepts>
 #include <memory>
 #include <span>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 
@@ -26,7 +29,7 @@ public:
   static constexpr int kChecksumLen = sizeof(int32_t);
   static constexpr int kMaxMessageLen = 64 * 1024 * 1024;
 
-  enum class ErrorCode {
+  enum class ErrorCode : uint8_t {
     kNoError = 0,
     kInvalidLength,
     kCheckSumError,
@@ -42,8 +45,14 @@ public:
   static constexpr ErrorCode kUnknownMessageType = ErrorCode::kUnknownMessageType;
   static constexpr ErrorCode kParseError = ErrorCode::kParseError;
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
+  using RawMessagePayload = StringPiece;
+#else
+  using RawMessagePayload = std::string_view;
+#endif
   using RawMessageCallback =
-      CallbackFunction<bool(const TcpConnectionPtr &, StringPiece, Timestamp)>;
+      CallbackFunction<bool(const TcpConnectionPtr &, RawMessagePayload,
+                            Timestamp)>;
   using ProtobufMessageCallback =
       CallbackFunction<void(const TcpConnectionPtr &, const MessagePtr &,
                             Timestamp)>;
@@ -52,21 +61,50 @@ public:
                             ErrorCode)>;
 
   ProtobufCodecLite(const ::google::protobuf::Message *prototype,
-                    StringPiece tagArg, ProtobufMessageCallback messageCb,
+                    std::string_view tagArg, ProtobufMessageCallback messageCb,
                     RawMessageCallback rawCb = {},
                     ErrorCallback errorCb = ErrorCallback{defaultErrorCallback})
-      : prototype_(prototype), tag_(tagArg.as_string()),
+      : prototype_(prototype), tag_(tagArg),
         messageCallback_(std::move(messageCb)), rawCb_(std::move(rawCb)),
         errorCallback_(std::move(errorCb)),
         kMinMessageLen(static_cast<int>(tagArg.size()) + kChecksumLen) {}
+
+#if MUDUO_ENABLE_LEGACY_COMPAT
+  ProtobufCodecLite(const ::google::protobuf::Message *prototype,
+                    StringPiece tagArg, ProtobufMessageCallback messageCb,
+                    RawMessageCallback rawCb = {},
+                    ErrorCallback errorCb = ErrorCallback{defaultErrorCallback})
+      : ProtobufCodecLite(prototype, tagArg.as_string_view(),
+                          std::move(messageCb), std::move(rawCb),
+                          std::move(errorCb)) {}
 
   ProtobufCodecLite(const ::google::protobuf::Message *prototype,
                     const char *tagArg, ProtobufMessageCallback messageCb,
                     RawMessageCallback rawCb = {},
                     ErrorCallback errorCb = ErrorCallback{defaultErrorCallback})
-      : ProtobufCodecLite(prototype, StringPiece(tagArg), std::move(messageCb),
+      : ProtobufCodecLite(prototype,
+                          std::string_view{tagArg == nullptr ? "" : tagArg},
+                          std::move(messageCb),
                           std::move(rawCb), std::move(errorCb)) {}
+#endif
 
+  template <typename MessageCb, typename RawCb = RawMessageCallback,
+            typename ErrCb = ErrorCallback>
+    requires std::constructible_from<ProtobufMessageCallback, MessageCb> &&
+             std::constructible_from<RawMessageCallback, RawCb> &&
+             std::constructible_from<ErrorCallback, ErrCb> &&
+             (!std::same_as<std::remove_cvref_t<MessageCb>,
+                            ProtobufMessageCallback>)
+  ProtobufCodecLite(const ::google::protobuf::Message *prototype,
+                    std::string_view tagArg, MessageCb &&messageCb,
+                    RawCb &&rawCb, ErrCb &&errorCb)
+      : ProtobufCodecLite(
+            prototype, tagArg,
+            ProtobufMessageCallback(std::forward<MessageCb>(messageCb)),
+            RawMessageCallback(std::forward<RawCb>(rawCb)),
+            ErrorCallback(std::forward<ErrCb>(errorCb))) {}
+
+#if MUDUO_ENABLE_LEGACY_COMPAT
   template <typename MessageCb, typename RawCb = RawMessageCallback,
             typename ErrCb = ErrorCallback>
     requires std::constructible_from<ProtobufMessageCallback, MessageCb> &&
@@ -78,7 +116,7 @@ public:
                     StringPiece tagArg, MessageCb &&messageCb, RawCb &&rawCb,
                     ErrCb &&errorCb)
       : ProtobufCodecLite(
-            prototype, tagArg,
+            prototype, tagArg.as_string_view(),
             ProtobufMessageCallback(std::forward<MessageCb>(messageCb)),
             RawMessageCallback(std::forward<RawCb>(rawCb)),
             ErrorCallback(std::forward<ErrCb>(errorCb))) {}
@@ -94,11 +132,25 @@ public:
                     const char *tagArg, MessageCb &&messageCb, RawCb &&rawCb,
                     ErrCb &&errorCb)
       : ProtobufCodecLite(
-            prototype, StringPiece(tagArg),
+            prototype, std::string_view{tagArg == nullptr ? "" : tagArg},
             ProtobufMessageCallback(std::forward<MessageCb>(messageCb)),
             RawMessageCallback(std::forward<RawCb>(rawCb)),
             ErrorCallback(std::forward<ErrCb>(errorCb))) {}
+#endif
 
+  template <typename MessageCb>
+    requires std::constructible_from<ProtobufMessageCallback, MessageCb> &&
+             (!std::same_as<std::remove_cvref_t<MessageCb>,
+                            ProtobufMessageCallback>)
+  ProtobufCodecLite(const ::google::protobuf::Message *prototype,
+                    std::string_view tagArg, MessageCb &&messageCb)
+      : ProtobufCodecLite(
+            prototype, tagArg,
+            ProtobufMessageCallback(std::forward<MessageCb>(messageCb)),
+            RawMessageCallback{},
+            ErrorCallback{defaultErrorCallback}) {}
+
+#if MUDUO_ENABLE_LEGACY_COMPAT
   template <typename MessageCb>
     requires std::constructible_from<ProtobufMessageCallback, MessageCb> &&
              (!std::same_as<std::remove_cvref_t<MessageCb>,
@@ -106,7 +158,7 @@ public:
   ProtobufCodecLite(const ::google::protobuf::Message *prototype,
                     StringPiece tagArg, MessageCb &&messageCb)
       : ProtobufCodecLite(
-            prototype, tagArg,
+            prototype, tagArg.as_string_view(),
             ProtobufMessageCallback(std::forward<MessageCb>(messageCb)),
             RawMessageCallback{},
             ErrorCallback{defaultErrorCallback}) {}
@@ -118,11 +170,27 @@ public:
   ProtobufCodecLite(const ::google::protobuf::Message *prototype,
                     const char *tagArg, MessageCb &&messageCb)
       : ProtobufCodecLite(
-            prototype, StringPiece(tagArg),
+            prototype, std::string_view{tagArg == nullptr ? "" : tagArg},
             ProtobufMessageCallback(std::forward<MessageCb>(messageCb)),
             RawMessageCallback{},
             ErrorCallback{defaultErrorCallback}) {}
+#endif
 
+  template <typename MessageCb, typename RawCb>
+    requires std::constructible_from<ProtobufMessageCallback, MessageCb> &&
+             std::constructible_from<RawMessageCallback, RawCb> &&
+             (!std::same_as<std::remove_cvref_t<MessageCb>,
+                            ProtobufMessageCallback>)
+  ProtobufCodecLite(const ::google::protobuf::Message *prototype,
+                    std::string_view tagArg, MessageCb &&messageCb,
+                    RawCb &&rawCb)
+      : ProtobufCodecLite(
+            prototype, tagArg,
+            ProtobufMessageCallback(std::forward<MessageCb>(messageCb)),
+            RawMessageCallback(std::forward<RawCb>(rawCb)),
+            ErrorCallback{defaultErrorCallback}) {}
+
+#if MUDUO_ENABLE_LEGACY_COMPAT
   template <typename MessageCb, typename RawCb>
     requires std::constructible_from<ProtobufMessageCallback, MessageCb> &&
              std::constructible_from<RawMessageCallback, RawCb> &&
@@ -131,7 +199,7 @@ public:
   ProtobufCodecLite(const ::google::protobuf::Message *prototype,
                     StringPiece tagArg, MessageCb &&messageCb, RawCb &&rawCb)
       : ProtobufCodecLite(
-            prototype, tagArg,
+            prototype, tagArg.as_string_view(),
             ProtobufMessageCallback(std::forward<MessageCb>(messageCb)),
             RawMessageCallback(std::forward<RawCb>(rawCb)),
             ErrorCallback{defaultErrorCallback}) {}
@@ -144,10 +212,11 @@ public:
   ProtobufCodecLite(const ::google::protobuf::Message *prototype,
                     const char *tagArg, MessageCb &&messageCb, RawCb &&rawCb)
       : ProtobufCodecLite(
-            prototype, StringPiece(tagArg),
+            prototype, std::string_view{tagArg == nullptr ? "" : tagArg},
             ProtobufMessageCallback(std::forward<MessageCb>(messageCb)),
             RawMessageCallback(std::forward<RawCb>(rawCb)),
             ErrorCallback{defaultErrorCallback}) {}
+#endif
 
   virtual ~ProtobufCodecLite() = default;
 
@@ -160,7 +229,11 @@ public:
   [[nodiscard]] virtual bool parseFromBuffer(std::span<const std::byte> buf,
                                              ::google::protobuf::Message *message);
   [[nodiscard]] virtual bool parseFromBuffer(
+      std::string_view buf, ::google::protobuf::Message *message);
+#if MUDUO_ENABLE_LEGACY_COMPAT
+  [[nodiscard]] virtual bool parseFromBuffer(
       StringPiece buf, ::google::protobuf::Message *message);
+#endif
   [[nodiscard]] virtual int serializeToBuffer(
       const ::google::protobuf::Message &message, Buffer *buf);
 
@@ -168,15 +241,25 @@ public:
 
   [[nodiscard]] ErrorCode parse(std::span<const std::byte> buf,
                                 ::google::protobuf::Message *message);
+  [[nodiscard]] ErrorCode parse(std::string_view buf,
+                                ::google::protobuf::Message *message);
+#if MUDUO_ENABLE_LEGACY_COMPAT
   [[nodiscard]] ErrorCode parse(const char *buf, int len,
                                 ::google::protobuf::Message *message);
+#endif
   void fillEmptyBuffer(Buffer *buf, const ::google::protobuf::Message &message);
 
   [[nodiscard]] static int32_t checksum(std::span<const std::byte> bytes);
   [[nodiscard]] static int32_t checksum(const void *buf, int len);
   [[nodiscard]] static bool validateChecksum(std::span<const std::byte> bytes);
+  [[nodiscard]] static bool validateChecksum(std::string_view bytes);
+#if MUDUO_ENABLE_LEGACY_COMPAT
   [[nodiscard]] static bool validateChecksum(const char *buf, int len);
+#endif
+  [[nodiscard]] static int32_t asInt32(std::span<const std::byte> bytes);
+#if MUDUO_ENABLE_LEGACY_COMPAT
   [[nodiscard]] static int32_t asInt32(const char *buf);
+#endif
 
   static void defaultErrorCallback(const TcpConnectionPtr &, Buffer *, Timestamp,
                                    ErrorCode);
@@ -207,7 +290,7 @@ public:
                                   ErrorCallback{
                                       ProtobufCodecLite::defaultErrorCallback})
       : messageCallback_(std::move(messageCb)),
-        codec_(&MSG::default_instance(), TAG,
+        codec_(&MSG::default_instance(), std::string_view{TAG},
                [this](const TcpConnectionPtr &conn, const MessagePtr &message,
                       Timestamp receiveTime) {
                  onRpcMessage(conn, message, receiveTime);

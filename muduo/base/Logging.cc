@@ -1,6 +1,7 @@
 #include "muduo/base/Logging.h"
 
 #include "muduo/base/CurrentThread.h"
+#include "muduo/base/Print.h"
 #include "muduo/base/TimeZone.h"
 
 #include <array>
@@ -101,11 +102,10 @@ const std::array<const char *,
                      "WARN  ", "ERROR ", "FATAL "};
 
 void defaultOutput(const char *msg, int len) {
-  const size_t n = std::fwrite(msg, 1, static_cast<size_t>(len), stdout);
-  (void)n;
+  muduo::io::print(std::string_view{msg, static_cast<std::size_t>(len)});
 }
 
-void defaultFlush() { std::fflush(stdout); }
+void defaultFlush() { muduo::io::flush(); }
 
 Logger::OutputFunc g_output = defaultOutput;
 Logger::FlushFunc g_flush = defaultFlush;
@@ -175,11 +175,11 @@ Logger::Impl::Impl(LogLevel level, int savedErrno, std::string_view func,
 
   if (g_logTimeZone.valid()) {
     usbuf.at(7) = ' ';
-    stream_.append(usbuf.data(), 8);
+    stream_.append(std::string_view(usbuf.data(), 8));
   } else {
     usbuf.at(7) = 'Z';
     usbuf.at(8) = ' ';
-    stream_.append(usbuf.data(), 9);
+    stream_.append(std::string_view(usbuf.data(), 9));
   }
 
   [[maybe_unused]] const int tid = CurrentThread::tid();
@@ -258,6 +258,7 @@ Logger::Logger(LogLevel level, int savedErrno, std::string_view func,
                std::source_location loc)
     : impl_(level, savedErrno, func, loc) {}
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
 Logger::Logger(SourceFile file, int line)
     : impl_(LogLevel::INFO, 0, {}, file.data_,
             static_cast<std::uint_least32_t>(line)) {}
@@ -273,6 +274,7 @@ Logger::Logger(SourceFile file, int line, LogLevel level, const char *func)
 Logger::Logger(SourceFile file, int line, bool toAbort)
     : impl_(toAbort ? LogLevel::FATAL : LogLevel::ERROR, errno, {}, file.data_,
             static_cast<std::uint_least32_t>(line)) {}
+#endif
 
 Logger::~Logger() {
   using enum Logger::LogLevel;

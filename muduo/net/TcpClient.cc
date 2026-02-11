@@ -4,10 +4,12 @@
 #include "muduo/net/EventLoop.h"
 #include "muduo/net/SocketsOps.h"
 
+#include <chrono>
 #include <format>
 #include <utility>
 
 namespace muduo::net {
+using namespace std::chrono_literals;
 
 namespace detail {
 
@@ -38,13 +40,13 @@ TcpClient::TcpClient(EventLoop *loop, const InetAddress &serverAddr, string name
           MessageCallback(defaultMessageCallback))) {
   connector_->setNewConnectionCallback([this](int sockfd) { newConnection(sockfd); });
 
-  LOG_INFO << "TcpClient::TcpClient[" << name_ << "] - connector "
-           << get_pointer(connector_);
+  muduo::logInfo("TcpClient::TcpClient[{}] - connector {}", name_,
+                 static_cast<const void *>(get_pointer(connector_)));
 }
 
 TcpClient::~TcpClient() {
-  LOG_INFO << "TcpClient::~TcpClient[" << name_ << "] - connector "
-           << get_pointer(connector_);
+  muduo::logInfo("TcpClient::~TcpClient[{}] - connector {}", name_,
+                 static_cast<const void *>(get_pointer(connector_)));
   connector_->stop();
 
   TcpConnectionPtr conn;
@@ -67,14 +69,15 @@ TcpClient::~TcpClient() {
       conn->forceClose();
     }
   } else {
-    (void)loop_->runAfter(
-        1.0, [connector = connector_] { detail::removeConnector(connector); });
+    (void)loop_->runAfter(1s, [connector = connector_] {
+      detail::removeConnector(connector);
+    });
   }
 }
 
 void TcpClient::connect() {
-  LOG_INFO << "TcpClient::connect[" << name_ << "] - connecting to "
-           << connector_->serverAddress().toIpPort();
+  muduo::logInfo("TcpClient::connect[{}] - connecting to {}", name_,
+                 connector_->serverAddress().toIpPort());
   connect_.store(true, std::memory_order_release);
   connector_->start();
 }
@@ -137,8 +140,8 @@ void TcpClient::removeConnection(const TcpConnectionPtr &conn) {
   loop_->runInLoop([conn] { conn->connectDestroyed(); });
   if (retry_.load(std::memory_order_acquire) &&
       connect_.load(std::memory_order_acquire)) {
-    LOG_INFO << "TcpClient::removeConnection[" << name_ << "] - reconnecting to "
-             << connector_->serverAddress().toIpPort();
+    muduo::logInfo("TcpClient::removeConnection[{}] - reconnecting to {}", name_,
+                   connector_->serverAddress().toIpPort());
     connector_->restart();
   }
 }

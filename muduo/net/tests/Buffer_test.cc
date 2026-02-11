@@ -10,6 +10,7 @@
 #include <string_view>
 
 using muduo::net::Buffer;
+using namespace std::string_view_literals;
 
 namespace {
 void appendString(Buffer &buf, const std::string &s) {
@@ -43,10 +44,10 @@ TEST_P(BufferAppendParamTest, AppendsExpectedPayload) {
     buf.append(std::string_view{tc.payload});
     break;
   case AppendMode::kCStr:
-    buf.append(tc.payload.c_str());
+    buf.append(std::string_view{tc.payload});
     break;
   case AppendMode::kCharArray:
-    buf.append("literal");
+    buf.append("literal"sv);
     break;
   case AppendMode::kByteSpan:
     buf.append(std::as_bytes(std::span{tc.payload.data(), tc.payload.size()}));
@@ -163,7 +164,7 @@ TEST(BufferTest, Prepend) {
 
 TEST(BufferTest, ReadInt) {
   Buffer intbuf;
-  intbuf.append(std::string_view{"HTTP"});
+  intbuf.append("HTTP"sv);
   EXPECT_EQ(intbuf.readableBytes(), 4);
   EXPECT_EQ(intbuf.peekInt8(), 'H');
   const int top16 = intbuf.peekInt16();
@@ -194,7 +195,7 @@ TEST(BufferTest, FindEol) {
 
 TEST(BufferTest, Move) {
   Buffer moved;
-  moved.append("muduo", 5);
+  moved.append("muduo"sv);
   const void *inner = moved.peek();
   Buffer newbuf(std::move(moved));
   EXPECT_EQ(inner, newbuf.peek());
@@ -219,7 +220,7 @@ TEST(BufferTest, SpanBasedAppendAndWritableSpan) {
 
 TEST(BufferTest, FindCrLfFromSpanData) {
   Buffer buf;
-  buf.append(std::string_view{"line1\r\nline2"});
+  buf.append("line1\r\nline2"sv);
 
   const std::byte *crlf = buf.findCRLF();
   ASSERT_NE(crlf, nullptr);
@@ -229,7 +230,7 @@ TEST(BufferTest, FindCrLfFromSpanData) {
 
 TEST(BufferTest, CharViewHelpersForTextProtocols) {
   Buffer buf;
-  buf.append(std::string_view{"GET / HTTP/1.1\r\nHost: x\r\n\r\n"});
+  buf.append("GET / HTTP/1.1\r\nHost: x\r\n\r\n"sv);
 
   ASSERT_EQ(buf.readableChars().substr(0, 4), "GET ");
 

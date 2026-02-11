@@ -1,15 +1,19 @@
 #include "muduo/base/CurrentThread.h"
+#include "muduo/base/CxxFeatures.h"
 
+#if MUDUO_HAS_CPP23_STACKTRACE
+#include <stacktrace>
+#endif
 #include <execinfo.h>
 #include <pthread.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 
-#include <cxxabi.h>
 #include <algorithm>
 #include <charconv>
 #include <chrono>
 #include <cstring>
+#include <cxxabi.h>
 #include <memory>
 #include <thread>
 
@@ -55,23 +59,22 @@ void cacheTid() {
       const int digitLen = static_cast<int>(ptr - digits.data());
       const int padding = std::max(0, 5 - digitLen);
       int pos = 0;
-      for (int i = 0; i < padding && pos < static_cast<int>(t_tidString.size()) - 1;
-           ++i) {
-        t_tidString[static_cast<size_t>(pos++)] = ' ';
+      for (int i = 0;
+           i < padding && pos < static_cast<int>(t_tidString.size()) - 1; ++i) {
+        t_tidString.at(static_cast<size_t>(pos++)) = ' ';
       }
-      if (const int copyLen =
-              std::min(digitLen,
-                       static_cast<int>(t_tidString.size()) - 1 - pos - 1);
+      if (const int copyLen = std::min(
+              digitLen, static_cast<int>(t_tidString.size()) - 1 - pos - 1);
           copyLen > 0) {
         std::memcpy(t_tidString.data() + pos, digits.data(),
                     static_cast<size_t>(copyLen));
         pos += copyLen;
       }
       if (pos < static_cast<int>(t_tidString.size()) - 1) {
-        t_tidString[static_cast<size_t>(pos++)] = ' ';
+        t_tidString.at(static_cast<size_t>(pos++)) = ' ';
       }
       t_tidStringLength = pos;
-      t_tidString[static_cast<size_t>(t_tidStringLength)] = '\0';
+      t_tidString.at(static_cast<size_t>(t_tidStringLength)) = '\0';
       return;
     }
 
@@ -79,7 +82,7 @@ void cacheTid() {
     static constexpr std::string_view kUnknown = "00000 ";
     std::memcpy(t_tidString.data(), kUnknown.data(), kUnknown.size());
     t_tidStringLength = static_cast<int>(kUnknown.size());
-    t_tidString[static_cast<size_t>(t_tidStringLength)] = '\0';
+    t_tidString.at(static_cast<size_t>(t_tidStringLength)) = '\0';
   }
 }
 
@@ -92,6 +95,16 @@ void sleepUsec(int64_t usec) {
 }
 
 string stackTrace(bool demangle) {
+#if MUDUO_HAS_CPP23_STACKTRACE
+  (void)demangle;
+  string trace;
+  for (const auto &entry : std::stacktrace::current()) {
+    const auto desc = entry.description();
+    trace.append(desc.empty() ? "<unknown>" : desc);
+    trace.push_back('\n');
+  }
+  return trace;
+#else
   constexpr int kMaxFrames = 200;
   void *frames[kMaxFrames];
   const int frameCount = ::backtrace(frames, kMaxFrames);
@@ -142,6 +155,7 @@ string stackTrace(bool demangle) {
     trace.push_back('\n');
   }
   return trace;
+#endif
 }
 
 } // namespace muduo::CurrentThread

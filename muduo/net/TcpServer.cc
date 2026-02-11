@@ -40,7 +40,7 @@ TcpServer::TcpServer(EventLoop *loop, const InetAddress &listenAddr,
 
 TcpServer::~TcpServer() {
   loop_->assertInLoopThread();
-  LOG_TRACE << "TcpServer::~TcpServer [" << name_ << "] destructing";
+  muduo::logTrace("TcpServer::~TcpServer [{}] destructing", name_);
 
   for (auto &[_, conn] : connections_) {
     TcpConnectionPtr guard(conn);
@@ -70,8 +70,8 @@ void TcpServer::newConnection(int sockfd, const InetAddress &peerAddr) {
       std::format("{}-{}#{}", name_, ipPort_, static_cast<long>(nextConnId_));
   ++nextConnId_;
 
-  LOG_INFO << "TcpServer::newConnection [" << name_ << "] - new connection ["
-           << connName << "] from " << peerAddr.toIpPort();
+  muduo::logInfo("TcpServer::newConnection [{}] - new connection [{}] from {}",
+                 name_, connName, peerAddr.toIpPort());
 
   InetAddress localAddr(sockets::getLocalAddr(sockfd));
   auto conn = std::make_shared<TcpConnection>(ioLoop, connName, sockfd, localAddr,
@@ -103,8 +103,8 @@ void TcpServer::removeConnection(const TcpConnectionPtr &conn) {
 
 void TcpServer::removeConnectionInLoop(const TcpConnectionPtr &conn) {
   loop_->assertInLoopThread();
-  LOG_INFO << "TcpServer::removeConnectionInLoop [" << name_
-           << "] - connection " << conn->name();
+  muduo::logInfo("TcpServer::removeConnectionInLoop [{}] - connection {}", name_,
+                 conn->name());
 
   const size_t erased = connections_.erase(conn->name());
   (void)erased;

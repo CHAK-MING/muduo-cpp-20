@@ -14,6 +14,8 @@
 #include <span>
 #include <string_view>
 
+using namespace std::string_view_literals;
+
 namespace muduo {
 
 namespace detail {
@@ -25,14 +27,20 @@ template <size_t SIZE> class FixedBuffer : noncopyable {
 public:
   FixedBuffer() = default;
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
   void append(const char *buf, size_t len) {
     // Append as much as possible (partial write)
     size_t n = std::min(len, static_cast<size_t>(avail()));
     std::memcpy(current(), buf, n);
     writePos_ += n;
   }
+#endif
 
-  void append(std::string_view str) { append(str.data(), str.size()); }
+  void append(std::string_view str) {
+    const size_t n = std::min(str.size(), static_cast<size_t>(avail()));
+    std::memcpy(current(), str.data(), n);
+    writePos_ += n;
+  }
 
   [[nodiscard]] const char *data() const { return data_.data(); }
   [[nodiscard]] int length() const { return static_cast<int>(writePos_); }
@@ -73,12 +81,13 @@ public:
   using Buffer = detail::FixedBuffer<detail::kSmallBuffer>;
 
   LogStream &operator<<(bool v) {
-    buffer_.append(v ? "1" : "0", 1);
+    buffer_.append(v ? "1"sv : "0"sv);
     return *this;
   }
 
   LogStream &operator<<(char v) {
-    buffer_.append(&v, 1);
+    const std::array<char, 1> ch{v};
+    buffer_.append(std::string_view{ch.data(), ch.size()});
     return *this;
   }
 
@@ -104,9 +113,10 @@ public:
 
   LogStream &operator<<(const char *str) {
     if (str != nullptr) {
-      buffer_.append(str, std::char_traits<char>::length(str));
+      buffer_.append(
+          std::string_view{str, std::char_traits<char>::length(str)});
     } else {
-      buffer_.append("(null)", 6);
+      buffer_.append("(null)"sv);
     }
     return *this;
   }
@@ -116,25 +126,27 @@ public:
   }
 
   LogStream &operator<<(std::string_view v) {
-    buffer_.append(v.data(), v.size());
+    buffer_.append(v);
     return *this;
   }
 
   LogStream &operator<<(const std::string &v) {
-    buffer_.append(v.data(), v.size());
+    buffer_.append(v);
     return *this;
   }
 
   LogStream &operator<<(const Buffer &v) {
-    buffer_.append(v.data(), static_cast<size_t>(v.length()));
+    buffer_.append(v.toStringView());
     return *this;
   }
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
   void append(const char *data, int len) {
-    buffer_.append(data, static_cast<size_t>(len));
+    buffer_.append(std::string_view{data, static_cast<size_t>(len)});
   }
+#endif
 
-  void append(std::string_view v) { buffer_.append(v.data(), v.size()); }
+  void append(std::string_view v) { buffer_.append(v); }
 
   template <typename... Args>
   LogStream &format(std::format_string<Args...> fmt, Args &&...args) {

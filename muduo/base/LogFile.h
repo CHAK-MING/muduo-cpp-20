@@ -1,6 +1,9 @@
 #pragma once
 
 #include "muduo/base/Types.h"
+#if MUDUO_ENABLE_LEGACY_COMPAT
+#include "muduo/base/StringPiece.h"
+#endif
 
 #include <chrono>
 #include <cstdint>
@@ -23,15 +26,17 @@ public:
   LogFile(const LogFile &) = delete;
   LogFile &operator=(const LogFile &) = delete;
 
-  void append(const char *logline, int len);
   void append(std::string_view logline);
+#if MUDUO_ENABLE_LEGACY_COMPAT
+  void append(const char *logline, int len);
   void append(StringPiece logline);
   void append(StringArg logline);
+#endif
   void flush();
   bool rollFile();
 
 private:
-  void append_unlocked(const char *logline, int len);
+  void append_unlocked(std::string_view logline);
 
   static string getLogFileName(const string &basename,
                                std::chrono::system_clock::time_point *now);

@@ -2,11 +2,11 @@
 
 #include "muduo/base/CurrentThread.h"
 #include "muduo/base/Exception.h"
+#include "muduo/base/Print.h"
 
 #include <sys/prctl.h>
 
 #include <cassert>
-#include <cstdio>
 #include <format>
 #include <string_view>
 #include <utility>
@@ -14,15 +14,6 @@
 using namespace muduo;
 
 std::atomic<int> Thread::numCreated_{0};
-
-namespace {
-
-void writeStderr(std::string_view text) {
-  const auto n = std::fwrite(text.data(), 1, text.size(), stderr);
-  (void)n;
-}
-
-} // namespace
 
 void Thread::setDefaultName() {
   const int num = ++numCreated_;
@@ -45,18 +36,18 @@ void Thread::runInThread() {
     CurrentThread::setName("finished");
   } catch (const Exception &ex) {
     CurrentThread::setName("crashed");
-    writeStderr(std::format("exception caught in Thread {}\n", name_));
-    writeStderr(std::format("reason: {}\n", ex.what()));
-    writeStderr(std::format("stack trace: {}\n", ex.stackTrace()));
+    muduo::io::eprintln("exception caught in Thread {}", name_);
+    muduo::io::eprintln("reason: {}", ex.what());
+    muduo::io::eprintln("stack trace: {}", ex.stackTrace());
     std::abort();
   } catch (const std::exception &ex) {
     CurrentThread::setName("crashed");
-    writeStderr(std::format("exception caught in Thread {}\n", name_));
-    writeStderr(std::format("reason: {}\n", ex.what()));
+    muduo::io::eprintln("exception caught in Thread {}", name_);
+    muduo::io::eprintln("reason: {}", ex.what());
     std::abort();
   } catch (...) {
     CurrentThread::setName("crashed");
-    writeStderr(std::format("unknown exception caught in Thread {}\n", name_));
+    muduo::io::eprintln("unknown exception caught in Thread {}", name_);
     throw;
   }
 }

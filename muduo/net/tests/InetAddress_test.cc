@@ -4,8 +4,10 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 using muduo::net::InetAddress;
+using namespace std::string_view_literals;
 
 namespace {
 
@@ -20,7 +22,7 @@ class InetAddressTextTest : public ::testing::TestWithParam<AddressTextCase> {};
 
 TEST_P(InetAddressTextTest, ParseAndFormat) {
   const auto &tc = GetParam();
-  const InetAddress addr(tc.ip, tc.port, tc.ipv6);
+  const InetAddress addr(std::string_view{tc.ip}, tc.port, tc.ipv6);
 
   EXPECT_EQ(addr.toIp(), tc.ip);
   EXPECT_EQ(addr.toIpPort(), tc.ipPort);
@@ -66,13 +68,13 @@ TEST(InetAddressTest, IPv6Basics) {
 
 TEST(InetAddressTest, ResolveLocalhost) {
   InetAddress addr(80);
-  EXPECT_TRUE(InetAddress::resolve("localhost", &addr));
+  EXPECT_TRUE(InetAddress::resolve("localhost"sv, &addr));
   EXPECT_EQ(addr.port(), 80);
 }
 
 TEST(InetAddressTest, ResolveExternalDnsOptional) {
   InetAddress addr(80);
-  const bool resolved = InetAddress::resolve("google.com", &addr);
+  const bool resolved = InetAddress::resolve("google.com"sv, &addr);
   if (resolved) {
     EXPECT_FALSE(addr.toIp().empty());
     EXPECT_EQ(addr.port(), 80);
@@ -82,12 +84,12 @@ TEST(InetAddressTest, ResolveExternalDnsOptional) {
 }
 
 TEST(InetAddressTest, FamilyAndVersionHelpers) {
-  const InetAddress ipv4("127.0.0.1", 8080);
+  const InetAddress ipv4("127.0.0.1"sv, 8080);
   EXPECT_TRUE(ipv4.isIpv4());
   EXPECT_FALSE(ipv4.isIpv6());
   EXPECT_EQ(ipv4.family(), AF_INET);
 
-  const InetAddress ipv6("::1", 8080, true);
+  const InetAddress ipv6("::1"sv, 8080, true);
   EXPECT_FALSE(ipv6.isIpv4());
   EXPECT_TRUE(ipv6.isIpv6());
   EXPECT_EQ(ipv6.family(), AF_INET6);

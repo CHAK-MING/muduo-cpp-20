@@ -1,6 +1,8 @@
 #pragma once
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
 #include "muduo/base/StringPiece.h"
+#endif
 #include <muduo/base/noncopyable.h>
 
 #include <zlib.h>
@@ -67,10 +69,12 @@ public:
                             : -1;
   }
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
   [[nodiscard]] int write(StringPiece buf) {
     return write(buf.as_string_view());
   }
   [[nodiscard]] int write(StringArg buf) { return write(buf.as_string_view()); }
+#endif
 
   [[nodiscard]] int write(std::span<const std::byte> bytes) {
     return file_ != nullptr ? ::gzwrite(file_, bytes.data(),

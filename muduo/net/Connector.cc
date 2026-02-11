@@ -7,16 +7,17 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <chrono>
 
 namespace muduo::net {
 
 Connector::Connector(EventLoop *loop, const InetAddress &serverAddr)
     : loop_(loop), serverAddr_(serverAddr) {
-  LOG_DEBUG << "Connector ctor[" << this << "]";
+  muduo::logDebug("Connector ctor[{}]", static_cast<const void *>(this));
 }
 
 Connector::~Connector() {
-  LOG_DEBUG << "Connector dtor[" << this << "]";
+  muduo::logDebug("Connector dtor[{}]", static_cast<const void *>(this));
   if (channel_) {
     if (loop_->isInLoopThread()) {
       channel_->disableAll();
@@ -60,7 +61,7 @@ void Connector::startInLoop() {
   if (connect_.load(std::memory_order_acquire)) {
     connect();
   } else {
-    LOG_DEBUG << "Connector::startInLoop do not connect";
+    muduo::logDebug("Connector::startInLoop do not connect");
   }
 }
 
@@ -101,12 +102,12 @@ void Connector::connect() {
   case EBADF:
   case EFAULT:
   case ENOTSOCK:
-    LOG_SYSERR << "Connector::connect error " << savedErrno;
+    muduo::logSysErr("Connector::connect error {}", savedErrno);
     sockets::close(sockfd);
     break;
 
   default:
-    LOG_SYSERR << "Connector::connect unexpected error " << savedErrno;
+    muduo::logSysErr("Connector::connect unexpected error {}", savedErrno);
     sockets::close(sockfd);
     break;
   }
@@ -144,7 +145,7 @@ int Connector::removeAndResetChannel() {
 void Connector::resetChannel() { channel_.reset(); }
 
 void Connector::handleWrite() {
-  LOG_TRACE << "Connector::handleWrite state=" << static_cast<int>(state_);
+  muduo::logTrace("Connector::handleWrite state={}", static_cast<int>(state_));
 
   if (state_ != States::kConnecting) {
     assert(state_ == States::kDisconnected);
@@ -154,14 +155,14 @@ void Connector::handleWrite() {
   const int sockfd = removeAndResetChannel();
   const int err = sockets::getSocketError(sockfd);
   if (err != 0) {
-    LOG_WARN << "Connector::handleWrite - SO_ERROR = " << err << " "
-             << muduo::strerror_tl(err);
+    muduo::logWarn("Connector::handleWrite - SO_ERROR = {} {}", err,
+                   muduo::strerror_tl(err));
     retry(sockfd);
     return;
   }
 
   if (sockets::isSelfConnect(sockfd)) {
-    LOG_WARN << "Connector::handleWrite - Self connect";
+    muduo::logWarn("Connector::handleWrite - Self connect");
     retry(sockfd);
     return;
   }
@@ -179,12 +180,12 @@ void Connector::handleWrite() {
 }
 
 void Connector::handleError() {
-  LOG_ERROR << "Connector::handleError state=" << static_cast<int>(state_);
+  muduo::logError("Connector::handleError state={}", static_cast<int>(state_));
   if (state_ == States::kConnecting) {
     const int sockfd = removeAndResetChannel();
     const int err = sockets::getSocketError(sockfd);
-    LOG_TRACE << "Connector::handleError SO_ERROR = " << err << " "
-              << muduo::strerror_tl(err);
+    muduo::logTrace("Connector::handleError SO_ERROR = {} {}", err,
+                    muduo::strerror_tl(err));
     retry(sockfd);
   }
 }
@@ -194,16 +195,15 @@ void Connector::retry(int sockfd) {
   setState(States::kDisconnected);
 
   if (!connect_.load(std::memory_order_acquire)) {
-    LOG_DEBUG << "Connector::retry do not connect";
+    muduo::logDebug("Connector::retry do not connect");
     return;
   }
 
-  LOG_INFO << "Connector::retry - Retry connecting to " << serverAddr_.toIpPort()
-           << " in " << retryDelayMs_ << " milliseconds";
+  muduo::logInfo("Connector::retry - Retry connecting to {} in {} milliseconds",
+                 serverAddr_.toIpPort(), retryDelayMs_);
 
-  const auto delaySec = static_cast<double>(retryDelayMs_) / 1000.0;
   const auto weakSelf = weak_from_this();
-  (void)loop_->runAfter(delaySec, [weakSelf] {
+  (void)loop_->runAfter(std::chrono::milliseconds{retryDelayMs_}, [weakSelf] {
     if (const auto self = weakSelf.lock()) {
       self->startInLoop();
     }

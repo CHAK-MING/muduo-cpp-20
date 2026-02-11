@@ -4,9 +4,9 @@
 
 #include <future>
 #include <pthread.h>
+#include <chrono>
 #include <string>
 #include <thread>
-#include <chrono>
 
 TEST(CurrentThread, BasicPropertiesInMainThread) {
   EXPECT_GT(muduo::CurrentThread::tid(), 0);
@@ -31,10 +31,11 @@ TEST(CurrentThread, NameAndMainThreadFlagInWorker) {
 }
 
 TEST(CurrentThread, SleepUsecAndStackTrace) {
+  using namespace std::chrono_literals;
   const auto before = std::chrono::steady_clock::now();
   muduo::CurrentThread::sleepUsec(5'000);
   const auto elapsed = std::chrono::steady_clock::now() - before;
-  EXPECT_GE(elapsed, std::chrono::microseconds(4'000));
+  EXPECT_GE(elapsed, 4ms);
 
   const auto trace = muduo::CurrentThread::stackTrace(false);
   EXPECT_FALSE(trace.empty());

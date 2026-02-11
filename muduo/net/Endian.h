@@ -1,5 +1,7 @@
 #pragma once
 
+#include "muduo/base/CxxFeatures.h"
+
 #include <bit>
 #include <cstdint>
 
@@ -10,7 +12,7 @@ static_assert(std::endian::native == std::endian::little ||
               "unsupported mixed-endian architecture");
 
 constexpr uint16_t byteSwap16(uint16_t value) noexcept {
-#if defined(__cpp_lib_byteswap) && __cpp_lib_byteswap >= 202110L
+#if MUDUO_HAS_CPP23_BYTESWAP
   return std::byteswap(value);
 #else
   return static_cast<uint16_t>((value << 8) | (value >> 8));
@@ -18,7 +20,7 @@ constexpr uint16_t byteSwap16(uint16_t value) noexcept {
 }
 
 constexpr uint32_t byteSwap32(uint32_t value) noexcept {
-#if defined(__cpp_lib_byteswap) && __cpp_lib_byteswap >= 202110L
+#if MUDUO_HAS_CPP23_BYTESWAP
   return std::byteswap(value);
 #else
   return ((value & 0x000000FFu) << 24) | ((value & 0x0000FF00u) << 8) |
@@ -27,7 +29,7 @@ constexpr uint32_t byteSwap32(uint32_t value) noexcept {
 }
 
 constexpr uint64_t byteSwap64(uint64_t value) noexcept {
-#if defined(__cpp_lib_byteswap) && __cpp_lib_byteswap >= 202110L
+#if MUDUO_HAS_CPP23_BYTESWAP
   return std::byteswap(value);
 #else
   return ((value & 0x00000000000000FFull) << 56) |

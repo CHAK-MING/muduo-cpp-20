@@ -76,7 +76,7 @@ TEST(InspectorTest, ServesHttpEndpoints) {
   std::string indexResp;
   std::string pidResp;
   std::thread client([&indexResp, &loop, &pidResp, port] {
-    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    std::this_thread::sleep_for(120ms);
     indexResp = httpGet(port, "/");
     pidResp = httpGet(port, "/proc/pid");
     loop.quit();
@@ -103,7 +103,7 @@ TEST(InspectorTest, ServesProcessAndSystemPages) {
 
   std::array<std::string, 9> responses;
   std::thread client([&loop, &responses, port] {
-    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    std::this_thread::sleep_for(120ms);
     responses[0] = httpGet(port, "/proc/overview");
     responses[1] = httpGet(port, "/proc/status");
     responses[2] = httpGet(port, "/proc/threads");

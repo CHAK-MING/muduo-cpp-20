@@ -1,69 +1,89 @@
 #include "muduo/base/FileUtil.h"
 
-#include "muduo/base/Logging.h"
+#include "muduo/base/Print.h"
 
 #include <algorithm>
 #include <cerrno>
-#include <cstring>
 #include <fcntl.h>
 #include <format>
+#include <system_error>
 #include <sys/stat.h>
 #include <unistd.h>
 
 using namespace muduo;
 
-FileUtil::AppendFile::AppendFile(std::string_view filename)
-    : fp_(::fopen(std::string(filename).c_str(), "ae")) {
-  if (fp_ != nullptr) {
-    ::setbuffer(fp_, buffer_.data(), buffer_.size());
-  }
+namespace {
+
+constexpr int kAppendOpenFlags = O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC;
+constexpr int kReadOnlyOpenFlags = O_RDONLY | O_CLOEXEC;
+
+[[nodiscard]] std::filesystem::path makePath(std::string_view filename) {
+  return std::filesystem::path{filename};
 }
 
+[[nodiscard]] int openForAppend(const std::filesystem::path &path) {
+  return ::open(path.c_str(), kAppendOpenFlags, 0644);
+}
+
+[[nodiscard]] int openReadOnly(const std::filesystem::path &path) {
+  return ::open(path.c_str(), kReadOnlyOpenFlags);
+}
+
+[[nodiscard]] ssize_t writeBytes(int fd, std::span<const char> bytes) {
+  return ::write(fd, bytes.data(), bytes.size());
+}
+
+[[nodiscard]] ssize_t readBytesAt(int fd, std::span<char> bytes, off_t offset) {
+  return ::pread(fd, bytes.data(), bytes.size(), offset);
+}
+
+} // namespace
+
+FileUtil::AppendFile::AppendFile(std::string_view filename)
+    : AppendFile(makePath(filename)) {}
+
+#if MUDUO_ENABLE_LEGACY_COMPAT
 FileUtil::AppendFile::AppendFile(StringPiece filename)
     : AppendFile(filename.as_string_view()) {}
 
 FileUtil::AppendFile::AppendFile(StringArg filename)
     : AppendFile(filename.as_string_view()) {}
+#endif
 
 FileUtil::AppendFile::AppendFile(const std::filesystem::path &filename)
-    : fp_(::fopen(filename.c_str(), "ae")) {
-  if (fp_ != nullptr) {
-    ::setbuffer(fp_, buffer_.data(), buffer_.size());
-  }
-}
+    : fd_(openForAppend(filename)) {}
 
 FileUtil::AppendFile::~AppendFile() {
-  if (fp_ != nullptr) {
-    ::fclose(fp_);
+  if (fd_ >= 0) {
+    ::close(fd_);
   }
 }
 
-void FileUtil::AppendFile::append(const char *logline, const size_t len) {
-  if (fp_ == nullptr) {
+void FileUtil::AppendFile::appendBytes(std::span<const char> bytes) {
+  if (bytes.empty() || fd_ < 0) {
     return;
   }
 
-  size_t written = 0;
-  while (written < len) {
-    const size_t n = write(logline + written, len - written);
-    if (n == 0) {
-      const int err = ferror(fp_);
-      if (err != 0) {
-        const auto msg =
-            std::format("AppendFile::append() failed {}\n", strerror_tl(err));
-        const auto writtenErr = std::fwrite(msg.data(), 1, msg.size(), stderr);
-        (void)writtenErr;
-      }
-      break;
+  size_t offset = 0;
+  while (offset < bytes.size()) {
+    const auto chunk = bytes.subspan(offset);
+    const ssize_t n = writeBytes(fd_, chunk);
+    if (n > 0) {
+      offset += static_cast<size_t>(n);
+      continue;
     }
-    written += n;
+    if (n < 0 && errno == EINTR) {
+      continue;
+    }
+    reportIoError("AppendFile::append()");
+    return;
   }
-
-  writtenBytes_ += static_cast<off_t>(written);
+  writtenBytes_ += static_cast<off_t>(bytes.size());
 }
 
-void FileUtil::AppendFile::append(std::string_view logline) {
-  append(logline.data(), logline.size());
+#if MUDUO_ENABLE_LEGACY_COMPAT
+void FileUtil::AppendFile::append(const char *logline, const size_t len) {
+  appendBytes(std::span<const char>(logline, len));
 }
 
 void FileUtil::AppendFile::append(StringPiece logline) {
@@ -73,42 +93,48 @@ void FileUtil::AppendFile::append(StringPiece logline) {
 void FileUtil::AppendFile::append(StringArg logline) {
   append(logline.as_string_view());
 }
+#endif
+
+void FileUtil::AppendFile::append(std::string_view logline) {
+  appendBytes(std::span<const char>(logline.data(), logline.size()));
+}
 
 void FileUtil::AppendFile::append(std::span<const char> logline) {
-  append(logline.data(), logline.size());
+  appendBytes(logline);
 }
 
 void FileUtil::AppendFile::flush() {
-  if (fp_ != nullptr) {
-    ::fflush(fp_);
+  // Direct fd writes are not user-space buffered.
+}
+
+void FileUtil::AppendFile::reportIoError(std::string_view where) {
+  const int err = errno;
+  if (err != 0) {
+    muduo::io::eprintln("{} failed: {}", where,
+                        std::error_code(err, std::generic_category()).message());
+  } else {
+    muduo::io::eprintln("{} failed", where);
   }
 }
 
-size_t FileUtil::AppendFile::write(const char *logline, size_t len) {
-  return ::fwrite_unlocked(logline, 1, len, fp_);
-}
-
 FileUtil::ReadSmallFile::ReadSmallFile(std::string_view filename)
-    : fd_(::open(std::string(filename).c_str(), O_RDONLY | O_CLOEXEC)) {
+    : ReadSmallFile(makePath(filename)) {}
+
+FileUtil::ReadSmallFile::ReadSmallFile(const std::filesystem::path &filename)
+    : fd_(openReadOnly(filename)) {
   if (fd_ < 0) {
     err_ = errno;
   }
   buf_[0] = '\0';
 }
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
 FileUtil::ReadSmallFile::ReadSmallFile(StringPiece filename)
     : ReadSmallFile(filename.as_string_view()) {}
 
 FileUtil::ReadSmallFile::ReadSmallFile(StringArg filename)
     : ReadSmallFile(filename.as_string_view()) {}
-
-FileUtil::ReadSmallFile::ReadSmallFile(const std::filesystem::path &filename)
-    : fd_(::open(filename.c_str(), O_RDONLY | O_CLOEXEC)) {
-  if (fd_ < 0) {
-    err_ = errno;
-  }
-  buf_[0] = '\0';
-}
+#endif
 
 FileUtil::ReadSmallFile::~ReadSmallFile() {
   if (fd_ >= 0) {
@@ -119,12 +145,13 @@ FileUtil::ReadSmallFile::~ReadSmallFile() {
 int FileUtil::ReadSmallFile::readToBuffer(int *size) {
   int err = err_;
   if (fd_ >= 0) {
-    const ssize_t n = ::pread(fd_, buf_.data(), buf_.size() - 1, 0);
+    const auto out = std::span<char>{buf_.data(), buf_.size() - 1};
+    const ssize_t n = readBytesAt(fd_, out, 0);
     if (n >= 0) {
       if (size != nullptr) {
         *size = static_cast<int>(n);
       }
-      buf_[static_cast<size_t>(n)] = '\0';
+      buf_.at(static_cast<size_t>(n)) = '\0';
     } else {
       err = errno;
     }

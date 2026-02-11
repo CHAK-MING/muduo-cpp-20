@@ -34,6 +34,7 @@ public:
   static constexpr LogLevel ERROR = LogLevel::ERROR;
   static constexpr LogLevel FATAL = LogLevel::FATAL;
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
   class SourceFile {
   public:
     template <int N> explicit SourceFile(const char (&arr)[N]) noexcept {
@@ -68,14 +69,18 @@ public:
     const char *data_{"unknown"};
     int size_{7};
   };
+#endif
 
   explicit Logger(LogLevel level = LogLevel::INFO, int savedErrno = 0,
                   std::string_view func = {},
                   std::source_location loc = std::source_location::current());
+
+#if MUDUO_ENABLE_LEGACY_COMPAT
   Logger(SourceFile file, int line);
   Logger(SourceFile file, int line, LogLevel level);
   Logger(SourceFile file, int line, LogLevel level, const char *func);
   Logger(SourceFile file, int line, bool toAbort);
+#endif
   ~Logger();
 
   Logger(const Logger &) = delete;
@@ -120,7 +125,12 @@ template <typename... Args>
 inline void logFmt(Logger::LogLevel level, std::source_location loc,
                    std::format_string<Args...> fmt, Args &&...args) {
   if (Logger::logLevel() <= level) {
-    Logger(level, 0, {}, loc).stream().format(fmt, std::forward<Args>(args)...);
+    auto &stream = Logger(level, 0, {}, loc).stream();
+    if constexpr (sizeof...(Args) == 0) {
+      stream.append(fmt.get());
+    } else {
+      stream.format(fmt, std::forward<Args>(args)...);
+    }
   }
 }
 
@@ -130,7 +140,11 @@ inline void logFmtErr(Logger::LogLevel level, int savedErrno,
                       Args &&...args) {
   if (Logger::logLevel() <= level) {
     auto &s = Logger(level, savedErrno, {}, loc).stream();
-    s.format(fmt, std::forward<Args>(args)...);
+    if constexpr (sizeof...(Args) == 0) {
+      s.append(fmt.get());
+    } else {
+      s.format(fmt, std::forward<Args>(args)...);
+    }
   }
 }
 
@@ -272,6 +286,7 @@ T *CheckNotNull(const char *names, T *ptr,
   return ptr;
 }
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
 template <typename T>
 T *CheckNotNull(Logger::SourceFile file, int line, const char *names, T *ptr) {
   if (ptr == nullptr) {
@@ -284,8 +299,9 @@ template <typename T>
 T *CheckNotNull(const char *file, int line, const char *names, T *ptr) {
   return CheckNotNull(Logger::SourceFile(file), line, names, ptr);
 }
+#endif
 
-#ifndef MUDUO_DISABLE_LEGACY_LOG_MACROS
+#if MUDUO_ENABLE_LEGACY_COMPAT
 #define LOG_TRACE                                                              \
   if (!::muduo::shouldLog(::muduo::Logger::LogLevel::TRACE))                   \
     ;                                                                          \
@@ -333,10 +349,9 @@ T *CheckNotNull(const char *file, int line, const char *names, T *ptr) {
     ;                                                                          \
   else                                                                         \
     ::muduo::logSysFatal()
-#endif
-
 #define CHECK_NOTNULL(val)                                                     \
   ::muduo::CheckNotNull(__FILE__, __LINE__, "'" #val "' Must be non NULL",     \
                         (val))
+#endif
 
 } // namespace muduo

@@ -13,11 +13,13 @@
 #include <optional>
 #include <pwd.h>
 #include <ranges>
+#include <string_view>
 #include <sys/resource.h>
 #include <sys/times.h>
 #include <unistd.h>
 
 using namespace muduo;
+using namespace std::string_view_literals;
 
 namespace {
 
@@ -119,13 +121,13 @@ std::string_view ProcessInfo::procname(const string &stat) {
 
 string ProcessInfo::procStatus() {
   string result;
-  FileUtil::readFile("/proc/self/status", 65536, &result);
+  FileUtil::readFile("/proc/self/status"sv, 65536, &result);
   return result;
 }
 
 string ProcessInfo::procStat() {
   string result;
-  FileUtil::readFile("/proc/self/stat", 65536, &result);
+  FileUtil::readFile("/proc/self/stat"sv, 65536, &result);
   return result;
 }
 

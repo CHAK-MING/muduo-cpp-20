@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cstring>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <tuple>
 
@@ -20,6 +21,7 @@
 #include <unistd.h>
 
 namespace {
+using namespace std::string_view_literals;
 
 int pickPort(bool ipv6) {
   const int domain = ipv6 ? AF_INET6 : AF_INET;
@@ -69,7 +71,7 @@ public:
     server_.setConnectionCallback(
         [this](const muduo::net::TcpConnectionPtr &conn) {
           if (conn->connected()) {
-            conn->send(std::string_view{"hello\n"});
+            conn->send("hello\n"sv);
           }
         });
     server_.setMessageCallback(
@@ -77,7 +79,7 @@ public:
                muduo::Timestamp) {
           const auto msg = buf->retrieveAllAsString();
           if (msg == "exit\n") {
-            conn->send(std::string_view{"bye\n"});
+            conn->send("bye\n"sv);
             conn->shutdown();
           }
           if (msg == "quit\n") {
@@ -224,7 +226,7 @@ void runEchoServerCase(bool ipv6, int threadNum) {
   std::atomic<bool> gotHello{false};
   std::atomic<bool> clientOk{true};
   std::thread client([&] {
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::this_thread::sleep_for(100ms);
     const bool ok = ipv6 ? runEchoClientV6(port, gotHello) : runEchoClientV4(port, gotHello);
     clientOk.store(ok, std::memory_order_release);
   });
@@ -262,7 +264,7 @@ TEST_F(EchoServerTest, ExitCommandSendsByeAndShutdown) {
   std::atomic<bool> gotBye{false};
   std::atomic<bool> clientOk{true};
   std::thread client([&] {
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::this_thread::sleep_for(100ms);
     clientOk.store(runEchoClientV4Exit(port, gotBye), std::memory_order_release);
   });
 

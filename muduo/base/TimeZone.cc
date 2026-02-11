@@ -7,6 +7,7 @@
 #include <string_view>
 
 using namespace muduo;
+using namespace std::string_view_literals;
 
 struct TimeZone::Data {
   bool fixed = false;
@@ -48,33 +49,6 @@ const std::chrono::sys_info *pickInfoNoThrow(const std::chrono::local_info &info
   }
 }
 
-std::string zoneFileToIanaName(const char *zonefile) {
-  if (zonefile == nullptr) {
-    return {};
-  }
-
-  constexpr std::string_view kPrefix = "/usr/share/zoneinfo/";
-  const std::string_view path(zonefile);
-  if (path.starts_with(kPrefix) && path.size() > kPrefix.size()) {
-    return std::string(path.substr(kPrefix.size()));
-  }
-
-  std::error_code ec;
-  const auto p = std::filesystem::path(std::string(path));
-  if (std::filesystem::is_symlink(p, ec)) {
-    const auto target = std::filesystem::read_symlink(p, ec);
-    if (!ec) {
-      const auto target_str = target.string();
-      if (std::string_view(target_str).starts_with(kPrefix) &&
-          target_str.size() > kPrefix.size()) {
-        return target_str.substr(kPrefix.size());
-      }
-    }
-  }
-
-  return {};
-}
-
 std::string zoneFileToIanaName(std::string_view zonefile) {
   if (zonefile.empty()) {
     return {};
@@ -113,18 +87,24 @@ DateTime::DateTime(const struct tm &t)
 
 TimeZone::TimeZone(std::unique_ptr<Data> data) : data_(std::move(data)) {}
 
-TimeZone::TimeZone(int eastOfUtc, const char * /*tzname*/) {
+TimeZone::TimeZone(int eastOfUtc, std::string_view /*tzname*/) {
   auto data = std::make_unique<Data>();
   data->fixed = true;
   data->eastOfUtc = eastOfUtc;
   data_ = std::move(data);
 }
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
+TimeZone::TimeZone(int eastOfUtc, const char *tzname)
+    : TimeZone(eastOfUtc,
+               std::string_view{tzname == nullptr ? "" : tzname}) {}
+#endif
+
 TimeZone::TimeZone(std::string_view zoneName) : TimeZone(loadZone(zoneName)) {}
 
-TimeZone TimeZone::UTC() { return {0, "UTC"}; }
+TimeZone TimeZone::UTC() { return {0, "UTC"sv}; }
 
-TimeZone TimeZone::China() { return {8 * 3600, "CST"}; }
+TimeZone TimeZone::China() { return {8 * 3600, "CST"sv}; }
 
 TimeZone TimeZone::loadZone(std::string_view zoneName) {
   if (zoneName.empty()) {
@@ -140,10 +120,11 @@ TimeZone TimeZone::loadZone(std::string_view zoneName) {
   }
 }
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
 TimeZone TimeZone::loadZoneFile(const char *zonefile) {
-  const std::string name = zoneFileToIanaName(zonefile);
-  return loadZone(name);
+  return zonefile == nullptr ? TimeZone{} : loadZoneFile(std::string_view{zonefile});
 }
+#endif
 
 TimeZone TimeZone::loadZoneFile(std::string_view zonefile) {
   return loadZone(zoneFileToIanaName(zonefile));

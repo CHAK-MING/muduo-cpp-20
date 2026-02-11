@@ -9,12 +9,12 @@
 
 namespace muduo::net {
 
-RpcChannel::RpcChannel()
+  RpcChannel::RpcChannel()
     : codec_([this](const TcpConnectionPtr &conn, const RpcMessagePtr &msg,
                     Timestamp receiveTime) {
         onRpcMessage(conn, msg, receiveTime);
       }) {
-  LOG_INFO << "RpcChannel::ctor - " << this;
+  muduo::logInfo("RpcChannel::ctor - {}", static_cast<const void *>(this));
 }
 
 RpcChannel::RpcChannel(const TcpConnectionPtr &conn)
@@ -23,11 +23,11 @@ RpcChannel::RpcChannel(const TcpConnectionPtr &conn)
         onRpcMessage(c, msg, receiveTime);
       }),
       conn_(conn) {
-  LOG_INFO << "RpcChannel::ctor - " << this;
+  muduo::logInfo("RpcChannel::ctor - {}", static_cast<const void *>(this));
 }
 
 RpcChannel::~RpcChannel() {
-  LOG_INFO << "RpcChannel::dtor - " << this;
+  muduo::logInfo("RpcChannel::dtor - {}", static_cast<const void *>(this));
 }
 
 void RpcChannel::CallMethod(const ::google::protobuf::MethodDescriptor *method,

@@ -25,7 +25,7 @@ constexpr int kPollTimeMs = 10'000;
 [[nodiscard]] int createEventfd() {
   const int eventFd = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
   if (eventFd < 0) {
-    LOG_SYSFATAL << "EventLoop createEventfd failed";
+    muduo::logSysFatal("EventLoop createEventfd failed");
   }
   return eventFd;
 }
@@ -49,10 +49,11 @@ EventLoop::EventLoop()
       timerQueue_(std::make_unique<TimerQueue>(this)),
       wakeupFd_(createEventfd()),
       wakeupChannel_(std::make_unique<Channel>(this, wakeupFd_)) {
-  LOG_DEBUG << "EventLoop created " << this << " in thread " << threadId_;
+  muduo::logDebug("EventLoop created {} in thread {}",
+                  static_cast<const void *>(this), threadId_);
   if (t_loopInThisThread != nullptr) {
-    LOG_FATAL << "Another EventLoop " << t_loopInThisThread
-              << " exists in this thread " << threadId_;
+    muduo::logFatal("Another EventLoop {} exists in this thread {}",
+                    static_cast<const void *>(t_loopInThisThread), threadId_);
   } else {
     t_loopInThisThread = this;
   }
@@ -63,8 +64,9 @@ EventLoop::EventLoop()
 }
 
 EventLoop::~EventLoop() {
-  LOG_DEBUG << "EventLoop " << this << " of thread " << threadId_
-            << " destructs in thread " << muduo::CurrentThread::tid();
+  muduo::logDebug("EventLoop {} of thread {} destructs in thread {}",
+                  static_cast<const void *>(this), threadId_,
+                  muduo::CurrentThread::tid());
   wakeupChannel_->disableAll();
   wakeupChannel_->remove();
   ::close(wakeupFd_);
@@ -77,7 +79,7 @@ void EventLoop::loop() {
 
   looping_.store(true, std::memory_order_release);
   quit_.store(false, std::memory_order_release);
-  LOG_TRACE << "EventLoop " << this << " start looping";
+  muduo::logTrace("EventLoop {} start looping", static_cast<const void *>(this));
 
   while (!quit_.load(std::memory_order_acquire)) {
     activeChannels_.clear();
@@ -94,7 +96,7 @@ void EventLoop::loop() {
     doPendingFunctors();
   }
 
-  LOG_TRACE << "EventLoop " << this << " stop looping";
+  muduo::logTrace("EventLoop {} stop looping", static_cast<const void *>(this));
   looping_.store(false, std::memory_order_release);
 }
 
@@ -130,33 +132,35 @@ size_t EventLoop::queueSize() const {
 }
 
 TimerId EventLoop::runAt(Timestamp time, TimerCallback cb) {
-  return timerQueue_->addTimer(std::move(cb), time, 0.0);
+  return timerQueue_->addTimer(std::move(cb), time,
+                               std::chrono::microseconds::zero());
 }
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
 TimerId EventLoop::runAfter(double delaySeconds, TimerCallback cb) {
-  const auto delay =
-      std::chrono::duration_cast<std::chrono::microseconds>(
-          std::chrono::duration<double>(delaySeconds));
+  const auto delay = std::chrono::duration_cast<std::chrono::microseconds>(
+      std::chrono::duration<double>(delaySeconds));
   return runAfter(delay, std::move(cb));
 }
+#endif
 
 TimerId EventLoop::runAfter(std::chrono::microseconds delay, TimerCallback cb) {
   const Timestamp::TimePoint when = Timestamp::now().timePoint() + delay;
   return runAt(Timestamp{when}, std::move(cb));
 }
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
 TimerId EventLoop::runEvery(double intervalSeconds, TimerCallback cb) {
-  const auto interval =
-      std::chrono::duration_cast<std::chrono::microseconds>(
-          std::chrono::duration<double>(intervalSeconds));
+  const auto interval = std::chrono::duration_cast<std::chrono::microseconds>(
+      std::chrono::duration<double>(intervalSeconds));
   return runEvery(interval, std::move(cb));
 }
+#endif
 
 TimerId EventLoop::runEvery(std::chrono::microseconds interval,
                             TimerCallback cb) {
   const Timestamp::TimePoint when = Timestamp::now().timePoint() + interval;
-  const double intervalSeconds = std::chrono::duration<double>(interval).count();
-  return timerQueue_->addTimer(std::move(cb), Timestamp{when}, intervalSeconds);
+  return timerQueue_->addTimer(std::move(cb), Timestamp{when}, interval);
 }
 
 void EventLoop::cancel(TimerId timerId) { timerQueue_->cancel(timerId); }
@@ -185,9 +189,10 @@ bool EventLoop::hasChannel(Channel *channel) const {
 }
 
 void EventLoop::abortNotInLoopThread() const {
-  LOG_FATAL << "EventLoop::abortNotInLoopThread - EventLoop " << this
-            << " was created in threadId_ = " << threadId_
-            << ", current thread id = " << muduo::CurrentThread::tid();
+  muduo::logFatal(
+      "EventLoop::abortNotInLoopThread - EventLoop {} was created in "
+      "threadId_ = {}, current thread id = {}",
+      static_cast<const void *>(this), threadId_, muduo::CurrentThread::tid());
 }
 
 void EventLoop::assertInLoopThread() const {
@@ -200,13 +205,12 @@ bool EventLoop::isInLoopThread() const {
   return threadId_ == muduo::CurrentThread::tid();
 }
 
-void EventLoop::wakeup() {
+void EventLoop::wakeup() const {
   const std::uint64_t one = 1;
   const auto bytes = std::as_bytes(std::span{&one, 1});
   const ssize_t written = sockets::write(wakeupFd_, bytes);
   if (written != static_cast<ssize_t>(sizeof(one))) {
-    LOG_ERROR << "EventLoop::wakeup() writes " << written
-              << " bytes instead of 8";
+    muduo::logError("EventLoop::wakeup() writes {} bytes instead of 8", written);
   }
 }
 
@@ -215,7 +219,7 @@ void EventLoop::handleRead([[maybe_unused]] Timestamp receiveTime) {
   const auto bytes = std::as_writable_bytes(std::span{&one, 1});
   const ssize_t n = sockets::read(wakeupFd_, bytes);
   if (n != static_cast<ssize_t>(sizeof(one))) {
-    LOG_ERROR << "EventLoop::handleRead() reads " << n << " bytes instead of 8";
+    muduo::logError("EventLoop::handleRead() reads {} bytes instead of 8", n);
   }
 }
 

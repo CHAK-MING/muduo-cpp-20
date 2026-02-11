@@ -72,8 +72,13 @@ void ProtobufCodecLite::onMessage(const TcpConnectionPtr &conn, Buffer *buf,
     }
 
     if (rawCb_ &&
+#if MUDUO_ENABLE_LEGACY_COMPAT
         !rawCb_(conn, StringPiece(buf->readableChars().data(), frameLen),
                 receiveTime)) {
+#else
+        !rawCb_(conn, std::string_view{buf->readableChars().data(), frameLen},
+                receiveTime)) {
+#endif
       buf->retrieve(frameLen);
       continue;
     }
@@ -98,12 +103,18 @@ bool ProtobufCodecLite::parseFromBuffer(std::span<const std::byte> buf,
   return message->ParseFromArray(buf.data(), static_cast<int>(buf.size()));
 }
 
+bool ProtobufCodecLite::parseFromBuffer(std::string_view buf,
+                                        ::google::protobuf::Message *message) {
+  return parseFromBuffer(std::as_bytes(std::span{buf.data(), buf.size()}),
+                         message);
+}
+
+#if MUDUO_ENABLE_LEGACY_COMPAT
 bool ProtobufCodecLite::parseFromBuffer(StringPiece buf,
                                         ::google::protobuf::Message *message) {
-  return parseFromBuffer(
-      std::as_bytes(std::span{buf.data(), static_cast<size_t>(buf.size())}),
-      message);
+  return parseFromBuffer(buf.as_string_view(), message);
 }
+#endif
 
 int ProtobufCodecLite::serializeToBuffer(
     const ::google::protobuf::Message &message, Buffer *buf) {
@@ -117,8 +128,8 @@ int ProtobufCodecLite::serializeToBuffer(
   auto *end = message.SerializeWithCachedSizesToArray(start);
   const int written = static_cast<int>(end - start);
   if (written != byteSize) {
-    LOG_ERROR << "serialize size mismatch expected=" << byteSize
-              << " written=" << written;
+    muduo::logError("serialize size mismatch expected={} written={}", byteSize,
+                    written);
   }
   buf->hasWritten(static_cast<size_t>(written));
   return written;
@@ -146,18 +157,25 @@ const string &ProtobufCodecLite::errorCodeToString(ErrorCode errorCode) {
 void ProtobufCodecLite::defaultErrorCallback(const TcpConnectionPtr &conn,
                                              Buffer *, Timestamp,
                                              ErrorCode errorCode) {
-  LOG_ERROR << "ProtobufCodecLite::defaultErrorCallback - "
-            << errorCodeToString(errorCode);
+  muduo::logError("ProtobufCodecLite::defaultErrorCallback - {}",
+                  errorCodeToString(errorCode));
   if (conn && conn->connected()) {
     conn->shutdown();
   }
 }
 
-int32_t ProtobufCodecLite::asInt32(const char *buf) {
+int32_t ProtobufCodecLite::asInt32(std::span<const std::byte> bytes) {
   int32_t be32 = 0;
-  std::memcpy(&be32, buf, sizeof(be32));
+  assert(bytes.size() >= sizeof(be32));
+  std::memcpy(&be32, bytes.data(), sizeof(be32));
   return sockets::networkToHost32(be32);
 }
+
+#if MUDUO_ENABLE_LEGACY_COMPAT
+int32_t ProtobufCodecLite::asInt32(const char *buf) {
+  return asInt32(std::as_bytes(std::span{buf, sizeof(int32_t)}));
+}
+#endif
 
 int32_t ProtobufCodecLite::checksum(const void *buf, int len) {
   return checksum(std::as_bytes(
@@ -170,10 +188,15 @@ int32_t ProtobufCodecLite::checksum(std::span<const std::byte> bytes) {
                 static_cast<uInt>(bytes.size())));
 }
 
-bool ProtobufCodecLite::validateChecksum(const char *buf, int len) {
-  return validateChecksum(
-      std::as_bytes(std::span{buf, static_cast<size_t>(len)}));
+bool ProtobufCodecLite::validateChecksum(std::string_view bytes) {
+  return validateChecksum(std::as_bytes(std::span{bytes.data(), bytes.size()}));
 }
+
+#if MUDUO_ENABLE_LEGACY_COMPAT
+bool ProtobufCodecLite::validateChecksum(const char *buf, int len) {
+  return validateChecksum(std::string_view{buf, static_cast<size_t>(len)});
+}
+#endif
 
 bool ProtobufCodecLite::validateChecksum(std::span<const std::byte> bytes) {
   if (bytes.size() < static_cast<size_t>(kChecksumLen)) {
@@ -181,17 +204,26 @@ bool ProtobufCodecLite::validateChecksum(std::span<const std::byte> bytes) {
   }
   const char *raw = reinterpret_cast<const char *>(bytes.data());
   const auto len = static_cast<std::ptrdiff_t>(bytes.size());
-  const int32_t expectedCheckSum = asInt32(raw + len - kChecksumLen);
+  const int32_t expectedCheckSum = asInt32(
+      std::span{bytes.data() + bytes.size() - static_cast<size_t>(kChecksumLen),
+                static_cast<size_t>(kChecksumLen)});
   const int32_t checkSum = checksum(bytes.first(bytes.size() - kChecksumLen));
   return checkSum == expectedCheckSum;
 }
 
 ProtobufCodecLite::ErrorCode
+ProtobufCodecLite::parse(std::string_view buf,
+                         ::google::protobuf::Message *message) {
+  return parse(std::as_bytes(std::span{buf.data(), buf.size()}), message);
+}
+
+#if MUDUO_ENABLE_LEGACY_COMPAT
+ProtobufCodecLite::ErrorCode
 ProtobufCodecLite::parse(const char *buf, int len,
                          ::google::protobuf::Message *message) {
-  return parse(std::as_bytes(std::span{buf, static_cast<size_t>(len)}),
-               message);
+  return parse(std::string_view{buf, static_cast<size_t>(len)}, message);
 }
+#endif
 
 ProtobufCodecLite::ErrorCode
 ProtobufCodecLite::parse(std::span<const std::byte> buf,
@@ -200,7 +232,7 @@ ProtobufCodecLite::parse(std::span<const std::byte> buf,
     return ErrorCode::kCheckSumError;
   }
 
-  const auto raw = reinterpret_cast<const char *>(buf.data());
+  const auto *raw = reinterpret_cast<const char *>(buf.data());
   if (buf.size() < tag_.size() + static_cast<size_t>(kChecksumLen) ||
       std::memcmp(raw, tag_.data(), tag_.size()) != 0) {
     return ErrorCode::kUnknownMessageType;

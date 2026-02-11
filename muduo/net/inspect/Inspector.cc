@@ -10,12 +10,14 @@
 
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <iterator>
 #include <ranges>
 #include <utility>
 
 namespace muduo::net {
 namespace {
+using namespace std::chrono_literals;
 
 Inspector *&globalInspectorSlot() {
   static Inspector *instance = nullptr;
@@ -54,7 +56,7 @@ Inspector::Inspector(EventLoop *loop, const InetAddress &httpAddr,
   performanceInspector_->registerCommands(this);
 #endif
 
-  (void)loop->runAfter(0, TimerCallback([this] { start(); }));
+  (void)loop->runAfter(0ms, TimerCallback([this] { start(); }));
 }
 
 Inspector::~Inspector() {
@@ -135,7 +137,7 @@ void Inspector::onRequest(const HttpRequest &req, HttpResponse *resp) {
       }
     }
   } else {
-    LOG_DEBUG << "Invalid inspect path: " << req.path();
+    muduo::logDebug("Invalid inspect path: {}", req.path());
   }
 
   if (!ok) {

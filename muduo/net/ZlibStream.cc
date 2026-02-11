@@ -33,7 +33,7 @@ ZlibInputStream::ZlibInputStream(Buffer *output) : output_(output) {
 
 ZlibInputStream::~ZlibInputStream() { (void)finish(); }
 
-bool ZlibInputStream::write(StringPiece buf) {
+bool ZlibInputStream::write(std::string_view buf) {
   if (finished_ || zerror_ != Z_OK) {
     return false;
   }
@@ -51,6 +51,12 @@ bool ZlibInputStream::write(StringPiece buf) {
   }
   return zerror_ == Z_OK;
 }
+
+#if MUDUO_ENABLE_LEGACY_COMPAT
+bool ZlibInputStream::write(StringPiece buf) {
+  return write(buf.as_string_view());
+}
+#endif
 
 bool ZlibInputStream::write(Buffer *input) {
   assert(input != nullptr);
@@ -115,7 +121,7 @@ ZlibOutputStream::ZlibOutputStream(Buffer *output) : output_(output) {
 
 ZlibOutputStream::~ZlibOutputStream() { (void)finish(); }
 
-bool ZlibOutputStream::write(StringPiece buf) {
+bool ZlibOutputStream::write(std::string_view buf) {
   if (finished_ || zerror_ != Z_OK) {
     return false;
   }
@@ -130,6 +136,12 @@ bool ZlibOutputStream::write(StringPiece buf) {
   }
   return zerror_ == Z_OK;
 }
+
+#if MUDUO_ENABLE_LEGACY_COMPAT
+bool ZlibOutputStream::write(StringPiece buf) {
+  return write(buf.as_string_view());
+}
+#endif
 
 bool ZlibOutputStream::write(Buffer *input) {
   assert(input != nullptr);

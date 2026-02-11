@@ -13,18 +13,22 @@ class TimerId : public muduo::copyable {
 public:
   constexpr TimerId() noexcept = default;
   explicit constexpr TimerId(std::int64_t seq) noexcept : sequence_(seq) {}
-  [[deprecated("Use TimerId(sequence) to avoid raw pointer coupling.")]]
+#if MUDUO_ENABLE_LEGACY_COMPAT
   constexpr TimerId([[maybe_unused]] Timer *timer, std::int64_t seq) noexcept
       : sequence_(seq) {}
+#endif
 
   [[nodiscard]] constexpr bool valid() const noexcept { return sequence_ > 0; }
   [[nodiscard]] constexpr std::int64_t sequence() const noexcept {
     return sequence_;
   }
-  [[nodiscard]] constexpr auto operator<=>(const TimerId &) const noexcept =
-      default;
-  [[nodiscard]] constexpr bool operator==(const TimerId &) const noexcept =
-      default;
+  [[nodiscard]] constexpr std::strong_ordering
+  operator<=>(const TimerId &rhs) const noexcept {
+    return sequence_ <=> rhs.sequence_;
+  }
+  [[nodiscard]] constexpr bool operator==(const TimerId &rhs) const noexcept {
+    return sequence_ == rhs.sequence_;
+  }
 
 private:
   std::int64_t sequence_{0};

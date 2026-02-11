@@ -1,12 +1,15 @@
 #pragma once
 
-#include "muduo/base/StringPiece.h"
 #include "muduo/base/noncopyable.h"
 #include "muduo/net/Buffer.h"
 #include "muduo/net/Callbacks.h"
 #include "muduo/net/InetAddress.h"
+#if MUDUO_ENABLE_LEGACY_COMPAT
+#include "muduo/base/StringPiece.h"
+#endif
 
 #include <any>
+#include <chrono>
 #include <concepts>
 #include <memory>
 #include <span>
@@ -38,18 +41,32 @@ public:
   [[nodiscard]] bool getTcpInfo(tcp_info *tcpi) const;
   [[nodiscard]] string getTcpInfoString() const;
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
   void send(const void *message, int len);
+#endif
+#if MUDUO_ENABLE_LEGACY_COMPAT
   void send(const char *message);
+#endif
   void send(const string &message);
   void send(string &&message);
+#if MUDUO_ENABLE_LEGACY_COMPAT
   void send(StringPiece message);
+#endif
   void send(std::string_view message);
   void send(std::span<const std::byte> message);
   void send(Buffer *message);
 
   void shutdown();
   void forceClose();
+#if MUDUO_ENABLE_LEGACY_COMPAT
   void forceCloseWithDelay(double seconds);
+#endif
+  void forceCloseWithDelay(std::chrono::microseconds delay);
+  template <typename Rep, typename Period>
+  void forceCloseWithDelay(std::chrono::duration<Rep, Period> delay) {
+    forceCloseWithDelay(
+        std::chrono::duration_cast<std::chrono::microseconds>(delay));
+  }
   void setTcpNoDelay(bool on);
 
   void startRead();
@@ -74,7 +91,9 @@ public:
   void setMessageCallback(F &&cb) {
     messageCallback_ = MessageCallback(std::forward<F>(cb));
   }
-  void setMessageCallback(MessageCallback cb) { messageCallback_ = std::move(cb); }
+  void setMessageCallback(MessageCallback cb) {
+    messageCallback_ = std::move(cb);
+  }
 
   template <typename F>
     requires CallbackBindable<F, WriteCompleteCallback>
@@ -91,7 +110,8 @@ public:
     highWaterMarkCallback_ = HighWaterMarkCallback(std::forward<F>(cb));
     highWaterMark_ = highWaterMark;
   }
-  void setHighWaterMarkCallback(HighWaterMarkCallback cb, size_t highWaterMark) {
+  void setHighWaterMarkCallback(HighWaterMarkCallback cb,
+                                size_t highWaterMark) {
     highWaterMarkCallback_ = std::move(cb);
     highWaterMark_ = highWaterMark;
   }
@@ -110,7 +130,12 @@ public:
   void connectDestroyed();
 
 private:
-  enum class StateE { kDisconnected, kConnecting, kConnected, kDisconnecting };
+  enum class StateE : std::uint8_t {
+    kDisconnected,
+    kConnecting,
+    kConnected,
+    kDisconnecting
+  };
 
   void handleRead(Timestamp receiveTime);
   void handleWrite();
@@ -133,7 +158,8 @@ private:
   const InetAddress localAddr_;
   const InetAddress peerAddr_;
 
-  ConnectionCallback connectionCallback_{ConnectionCallback(defaultConnectionCallback)};
+  ConnectionCallback connectionCallback_{
+      ConnectionCallback(defaultConnectionCallback)};
   MessageCallback messageCallback_{MessageCallback(defaultMessageCallback)};
   WriteCompleteCallback writeCompleteCallback_;
   HighWaterMarkCallback highWaterMarkCallback_;

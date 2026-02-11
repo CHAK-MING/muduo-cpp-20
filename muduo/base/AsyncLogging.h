@@ -11,6 +11,7 @@
 #include <new>
 #include <semaphore>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -22,7 +23,10 @@ public:
                size_t shardCount = 0);
   ~AsyncLogging();
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
   void append(const char *logline, int len);
+#endif
+  void append(std::string_view logline);
 
   void start();
   void stop();

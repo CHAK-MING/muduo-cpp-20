@@ -1,11 +1,11 @@
 #pragma once
 
-#include "muduo/base/Types.h"
 #include "muduo/base/Timestamp.h"
+#include "muduo/base/Types.h"
 
 #include <cassert>
-#include <cstddef>
 #include <concepts>
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <type_traits>
@@ -17,13 +17,13 @@ using std::placeholders::_2;
 using std::placeholders::_3;
 
 template <typename T>
-  requires (!std::is_void_v<T>)
+  requires(!std::is_void_v<T>)
 [[nodiscard]] inline T *get_pointer(const std::shared_ptr<T> &ptr) {
   return ptr.get();
 }
 
 template <typename T>
-  requires (!std::is_void_v<T>)
+  requires(!std::is_void_v<T>)
 [[nodiscard]] inline T *get_pointer(const std::unique_ptr<T> &ptr) {
   return ptr.get();
 }
@@ -45,18 +45,16 @@ class Buffer;
 class TcpConnection;
 using TcpConnectionPtr = std::shared_ptr<TcpConnection>;
 
-#ifndef MUDUO_DISABLE_LEGACY_LOG_MACROS
-template <typename Signature>
-using CallbackFunction = muduo::detail::MoveOnlyFunction<Signature>;
+#if MUDUO_ENABLE_LEGACY_COMPAT
+template <typename Signature> using CallbackFunction = std::function<Signature>;
 #else
 template <typename Signature>
-using CallbackFunction = std::function<Signature>;
+using CallbackFunction = muduo::detail::MoveOnlyFunction<Signature>;
 #endif
 
 template <typename F, typename Callback>
-concept CallbackBindable =
-    std::constructible_from<Callback, F> &&
-    (!std::same_as<std::remove_cvref_t<F>, Callback>);
+concept CallbackBindable = std::constructible_from<Callback, F> &&
+                           (!std::same_as<std::remove_cvref_t<F>, Callback>);
 
 using TimerCallback = CallbackFunction<void()>;
 using ConnectionCallback = CallbackFunction<void(const TcpConnectionPtr &)>;

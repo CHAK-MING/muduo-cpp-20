@@ -36,7 +36,6 @@ set(BASE_GTEST_SPECS
   asynclogging_test AsyncLogging_test.cc
   fork_test Fork_test.cc
   types_test Types_test.cc
-  stringpiece_test StringPiece_test.cc
   gzipfile_test GzipFile_test.cc
 )
 

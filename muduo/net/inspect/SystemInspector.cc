@@ -4,9 +4,11 @@
 #include "muduo/net/inspect/ProcessInspector.h"
 
 #include <format>
+#include <string_view>
 #include <sys/utsname.h>
 
 namespace muduo::net {
+using namespace std::string_view_literals;
 
 void SystemInspector::registerCommands(Inspector *ins) {
   ins->add("sys", "overview", SystemInspector::overview, "print system overview");
@@ -19,31 +21,31 @@ void SystemInspector::registerCommands(Inspector *ins) {
 
 string SystemInspector::loadavg(HttpRequest::Method, const Inspector::ArgList &) {
   string data;
-  FileUtil::readFile("/proc/loadavg", 65536, &data);
+  FileUtil::readFile("/proc/loadavg"sv, 65536, &data);
   return data;
 }
 
 string SystemInspector::version(HttpRequest::Method, const Inspector::ArgList &) {
   string data;
-  FileUtil::readFile("/proc/version", 65536, &data);
+  FileUtil::readFile("/proc/version"sv, 65536, &data);
   return data;
 }
 
 string SystemInspector::cpuinfo(HttpRequest::Method, const Inspector::ArgList &) {
   string data;
-  FileUtil::readFile("/proc/cpuinfo", 65536, &data);
+  FileUtil::readFile("/proc/cpuinfo"sv, 65536, &data);
   return data;
 }
 
 string SystemInspector::meminfo(HttpRequest::Method, const Inspector::ArgList &) {
   string data;
-  FileUtil::readFile("/proc/meminfo", 65536, &data);
+  FileUtil::readFile("/proc/meminfo"sv, 65536, &data);
   return data;
 }
 
 string SystemInspector::stat(HttpRequest::Method, const Inspector::ArgList &) {
   string data;
-  FileUtil::readFile("/proc/stat", 65536, &data);
+  FileUtil::readFile("/proc/stat"sv, 65536, &data);
   return data;
 }
 
@@ -66,7 +68,7 @@ string SystemInspector::overview(HttpRequest::Method, const Inspector::ArgList &
   }
 
   string statText;
-  FileUtil::readFile("/proc/stat", 65536, &statText);
+  FileUtil::readFile("/proc/stat"sv, 65536, &statText);
   const Timestamp bootTime(Timestamp::kMicroSecondsPerSecond *
                            getLong(statText, "btime "));
   result += "Boot time: ";
@@ -77,13 +79,13 @@ string SystemInspector::overview(HttpRequest::Method, const Inspector::ArgList &
   result += "\n";
 
   string loadavgText;
-  FileUtil::readFile("/proc/loadavg", 65536, &loadavgText);
+  FileUtil::readFile("/proc/loadavg"sv, 65536, &loadavgText);
   result += std::format("Processes created: {}\n",
                         getLong(statText, "processes "));
   result += std::format("Loadavg: {}\n", loadavgText);
 
   string meminfoText;
-  FileUtil::readFile("/proc/meminfo", 65536, &meminfoText);
+  FileUtil::readFile("/proc/meminfo"sv, 65536, &meminfoText);
   const long totalKb = getLong(meminfoText, "MemTotal:");
   const long freeKb = getLong(meminfoText, "MemFree:");
   const long buffersKb = getLong(meminfoText, "Buffers:");

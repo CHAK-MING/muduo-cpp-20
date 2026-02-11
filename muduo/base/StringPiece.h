@@ -1,3 +1,4 @@
+#if MUDUO_ENABLE_LEGACY_COMPAT
 #pragma once
 
 #include <compare>
@@ -51,16 +52,13 @@ public:
   }
   constexpr void remove_prefix(size_t n) { view_.remove_prefix(n); }
   constexpr void remove_suffix(size_t n) { view_.remove_suffix(n); }
-
   [[nodiscard]] constexpr char operator[](size_t i) const noexcept {
     return view_[i];
   }
-
   [[nodiscard]] constexpr StringPiece
   substr(size_t pos, size_t n = std::string_view::npos) const {
     return StringPiece{view_.substr(pos, n)};
   }
-
   [[nodiscard]] std::string as_string() const { return std::string(view_); }
   void CopyToString(std::string *target) const {
     if (target != nullptr) {
@@ -118,3 +116,5 @@ private:
 };
 
 } // namespace muduo
+
+#endif

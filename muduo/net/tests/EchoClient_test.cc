@@ -14,6 +14,7 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -25,6 +26,7 @@
 namespace {
 
 using namespace std::chrono_literals;
+using namespace std::string_view_literals;
 
 class EchoClientTest : public ::testing::Test {
 };
@@ -45,7 +47,7 @@ public:
           onConnected_();
         }
       }
-      conn->send(std::string_view{"world\n"});
+      conn->send("world\n"sv);
     });
     client_.setMessageCallback([this](const muduo::net::TcpConnectionPtr &conn,
                                       muduo::net::Buffer *buf, muduo::Timestamp) {
@@ -54,7 +56,7 @@ public:
         if (onQuit_) {
           onQuit_();
         }
-        conn->send(std::string_view{"bye\n"});
+        conn->send("bye\n"sv);
         conn->shutdown();
       } else if (msg == "shutdown\n") {
         if (onShutdown_) {
@@ -298,11 +300,12 @@ int startScriptedServerForMultiClient(uint16_t &portOut, std::atomic<bool> &read
 }
 
 bool waitServerReady(const std::atomic<bool> &ready) {
+  using namespace std::chrono_literals;
   for (int i = 0; i < 400; ++i) {
     if (ready.load(std::memory_order_acquire)) {
       return true;
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    std::this_thread::sleep_for(5ms);
   }
   return false;
 }
@@ -332,8 +335,8 @@ TEST_P(EchoClientBasicParamTest, BasicEchoFlow) {
 
   muduo::net::EventLoop loop;
   OriginalStyleEchoClient client(&loop,
-                                 ipv6 ? muduo::net::InetAddress("::1", port, true)
-                                      : muduo::net::InetAddress("127.0.0.1", port),
+                                 ipv6 ? muduo::net::InetAddress("::1"sv, port, true)
+                                      : muduo::net::InetAddress("127.0.0.1"sv, port),
                                  ipv6 ? "BasicV6" : "Basic");
   client.setOnShutdown([&] { shutdownHandled.store(true, std::memory_order_release); });
   client.connect();
@@ -367,7 +370,7 @@ TEST_F(EchoClientTest, QuitCommandSendsByeAndThenShutdownQuitsLoop) {
 
   muduo::net::EventLoop loop;
   OriginalStyleEchoClient client(
-      &loop, muduo::net::InetAddress("127.0.0.1", port), "Quit");
+      &loop, muduo::net::InetAddress("127.0.0.1"sv, port), "Quit");
   client.setOnQuit([&] { quitHandled.store(true, std::memory_order_release); });
   client.setOnShutdown([&] { shutdownHandled.store(true, std::memory_order_release); });
   client.connect();
@@ -402,7 +405,8 @@ TEST_F(EchoClientTest, SequentialMultiClientConnect) {
   clients.reserve(kClients);
   for (int i = 0; i < kClients; ++i) {
     clients.emplace_back(std::make_unique<OriginalStyleEchoClient>(
-        &loop, muduo::net::InetAddress("127.0.0.1", port), std::to_string(i + 1)));
+        &loop, muduo::net::InetAddress("127.0.0.1"sv, port),
+        std::to_string(i + 1)));
   }
 
   int current = 0;

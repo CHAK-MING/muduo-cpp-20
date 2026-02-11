@@ -23,6 +23,7 @@ set(NET_GTEST_SPECS
   net_eventloopthread_test EventLoopThread_test.cc
   net_eventloopthreadpool_test EventLoopThreadPool_test.cc
   net_timerqueue_test TimerQueue_test.cc
+  net_socketsops_test SocketsOps_test.cc
   net_channel_test Channel_test.cc
   net_poller_test Poller_test.cc
   net_httprequest_test HttpRequest_test.cc

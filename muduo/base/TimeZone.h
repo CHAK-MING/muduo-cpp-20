@@ -28,13 +28,18 @@ struct DateTime {
 class TimeZone {
 public:
   TimeZone() = default;
+  TimeZone(int eastOfUtc, std::string_view tzname);
+#if MUDUO_ENABLE_LEGACY_COMPAT
   TimeZone(int eastOfUtc, const char *tzname);
+#endif
   explicit TimeZone(std::string_view zoneName);
 
   static TimeZone UTC();
   static TimeZone China();
   static TimeZone loadZone(std::string_view zoneName);
+#if MUDUO_ENABLE_LEGACY_COMPAT
   static TimeZone loadZoneFile(const char *zonefile);
+#endif
   static TimeZone loadZoneFile(std::string_view zonefile);
 
   [[nodiscard]] bool valid() const { return static_cast<bool>(data_); }

@@ -38,6 +38,14 @@ static void BM_ThreadPool_Run(benchmark::State& state) {
 } // namespace
 
 BENCHMARK(BM_ThreadPool_Run)
+    ->Args({1, 0, 200000})
+    ->Args({2, 0, 200000})
+    ->Args({4, 0, 200000})
     ->Args({8, 0, 200000})
+    ->Args({16, 0, 200000})
+    ->Args({1, 1024, 200000})
+    ->Args({2, 1024, 200000})
+    ->Args({4, 1024, 200000})
     ->Args({8, 1024, 200000})
+    ->Args({16, 1024, 200000})
     ->UseRealTime();

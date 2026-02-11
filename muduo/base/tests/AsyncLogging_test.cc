@@ -14,6 +14,7 @@
 #include <vector>
 
 namespace {
+using namespace std::chrono_literals;
 
 std::vector<std::filesystem::path> findLogFiles(std::string_view basename) {
   std::vector<std::filesystem::path> files;
@@ -57,9 +58,9 @@ TEST(AsyncLogging, WritesMessagesToFile) {
 
   muduo::AsyncLogging logger(basename, 1024 * 1024, 1);
   logger.start();
-  logger.append("line one\n", 9);
-  logger.append("line two\n", 9);
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  logger.append("line one\n");
+  logger.append("line two\n");
+  std::this_thread::sleep_for(50ms);
   logger.stop();
 
   const auto files = findLogFiles(basename);
@@ -74,7 +75,6 @@ TEST(AsyncLogging, WritesMessagesToFile) {
 }
 
 TEST(AsyncLogging, MultiThreadStressNoLoss) {
-  using namespace std::chrono_literals;
   const std::string basename =
       std::format("muduo_asynclog_stress_{}_{}", ::getpid(),
                   std::chrono::steady_clock::now().time_since_epoch().count());
@@ -97,7 +97,7 @@ TEST(AsyncLogging, MultiThreadStressNoLoss) {
       ready.wait();
       for (int i = 0; i < kPerThread; ++i) {
         const std::string line = std::format("stress-thread={} seq={}\n", t, i);
-        logger.append(line.data(), static_cast<int>(line.size()));
+        logger.append(line);
       }
     });
   }
@@ -138,8 +138,8 @@ TEST(AsyncLogging, StartStopIdempotentAndStateVisible) {
   logger.start();
   EXPECT_TRUE(logger.started());
 
-  logger.append("state-check\n", 12);
-  std::this_thread::sleep_for(std::chrono::milliseconds(30));
+  logger.append("state-check\n");
+  std::this_thread::sleep_for(30ms);
 
   logger.stop();
   EXPECT_FALSE(logger.started());

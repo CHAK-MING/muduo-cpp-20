@@ -23,9 +23,9 @@ void RpcServer::registerService(::google::protobuf::Service *service) {
 void RpcServer::start() { server_.start(); }
 
 void RpcServer::onConnection(const TcpConnectionPtr &conn) {
-  LOG_INFO << "RpcServer - " << conn->peerAddress().toIpPort() << " -> "
-           << conn->localAddress().toIpPort() << " is "
-           << (conn->connected() ? "UP" : "DOWN");
+  muduo::logInfo("RpcServer - {} -> {} is {}", conn->peerAddress().toIpPort(),
+                 conn->localAddress().toIpPort(),
+                 conn->connected() ? "UP" : "DOWN");
 
   if (conn->connected()) {
     auto channel = std::make_shared<RpcChannel>(conn);

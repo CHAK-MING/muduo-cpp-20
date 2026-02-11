@@ -9,6 +9,7 @@
 using muduo::net::Buffer;
 using muduo::net::ZlibInputStream;
 using muduo::net::ZlibOutputStream;
+using namespace std::string_view_literals;
 
 class ZlibStreamTest : public ::testing::Test {
 protected:
@@ -35,7 +36,8 @@ TEST_F(ZlibStreamTest, FinishStatus) {
 TEST_F(ZlibStreamTest, WriteStringAndFinish) {
   Buffer output;
   ZlibOutputStream stream(&output);
-  EXPECT_TRUE(stream.write("01234567890123456789012345678901234567890123456789"));
+  EXPECT_TRUE(stream.write(
+      "01234567890123456789012345678901234567890123456789"sv));
   EXPECT_TRUE(stream.finish());
   EXPECT_EQ(stream.zlibErrorCode(), Z_STREAM_END);
   EXPECT_GT(output.readableBytes(), 0);
@@ -45,8 +47,8 @@ TEST_F(ZlibStreamTest, LargeRepeatedWrites) {
   Buffer output;
   ZlibOutputStream stream(&output);
   for (int i = 0; i < 16384; ++i) {
-    ASSERT_TRUE(
-        stream.write("01234567890123456789012345678901234567890123456789"));
+    ASSERT_TRUE(stream.write(
+        "01234567890123456789012345678901234567890123456789"sv));
   }
   EXPECT_TRUE(stream.finish());
   EXPECT_EQ(stream.zlibErrorCode(), Z_STREAM_END);
@@ -85,7 +87,7 @@ TEST_F(ZlibStreamTest, HugeUnderscoreInput) {
 
 TEST_F(ZlibStreamTest, WriteBufferInputInterface) {
   Buffer input;
-  input.append(std::string_view{"abcdefghabcdefghabcdefgh"});
+  input.append("abcdefghabcdefghabcdefgh"sv);
   Buffer compressed;
   ZlibOutputStream stream(&compressed);
 

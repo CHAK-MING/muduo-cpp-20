@@ -15,7 +15,7 @@ namespace muduo {
 
 class Thread : noncopyable {
 public:
-#ifndef MUDUO_DISABLE_LEGACY_LOG_MACROS
+#if MUDUO_ENABLE_LEGACY_COMPAT
   using ThreadFunc = std::function<void()>;
 #else
   using ThreadFunc = detail::MoveOnlyFunction<void()>;

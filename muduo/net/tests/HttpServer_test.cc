@@ -100,7 +100,7 @@ TEST(HttpServerTest, ServesHelloAndNotFound) {
   std::string hello;
   std::string notFound;
   std::thread client([&] {
-    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    std::this_thread::sleep_for(120ms);
     hello = httpGet(port, "/hello");
     notFound = httpGet(port, "/missing");
     loop.quit();

@@ -25,6 +25,7 @@
 #include <vector>
 
 namespace {
+using namespace std::chrono_literals;
 
 int pickPort() {
   static std::atomic<int> port{41000 + (::getpid() % 20000)};
@@ -88,7 +89,7 @@ public:
     });
 
     std::unique_lock lock(mutex_);
-    (void)cv_.wait_for(lock, std::chrono::seconds(2), [this] { return started_; });
+    (void)cv_.wait_for(lock, 2s, [this] { return started_; });
   }
 
   ~EchoServerHarness() {
@@ -108,7 +109,7 @@ public:
       doneCv.notify_one();
     });
     std::unique_lock lock(doneMutex);
-    (void)doneCv.wait_for(lock, std::chrono::seconds(2), [&done] { return done; });
+    (void)doneCv.wait_for(lock, 2s, [&done] { return done; });
   }
 
 private:

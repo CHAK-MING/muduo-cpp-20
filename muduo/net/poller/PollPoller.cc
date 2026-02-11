@@ -20,13 +20,13 @@ Timestamp PollPoller::poll(int timeoutMs, ChannelList *activeChannels) {
   const Timestamp now(Timestamp::now());
 
   if (numEvents > 0) {
-    LOG_TRACE << numEvents << " events happened";
+    muduo::logTrace("{} events happened", numEvents);
     fillActiveChannels(numEvents, activeChannels);
   } else if (numEvents == 0) {
-    LOG_TRACE << "nothing happened";
+    muduo::logTrace("nothing happened");
   } else if (savedErrno != EINTR) {
     errno = savedErrno;
-    LOG_SYSERR << "PollPoller::poll()";
+    muduo::logSysErr("PollPoller::poll()");
   }
 
   return now;
@@ -57,7 +57,7 @@ void PollPoller::fillActiveChannels(int numEvents,
 
 void PollPoller::updateChannel(Channel *channel) {
   Poller::assertInLoopThread();
-  LOG_TRACE << "fd = " << channel->fd() << " events = " << channel->events();
+  muduo::logTrace("fd = {} events = {}", channel->fd(), channel->events());
 
   if (channel->index() < 0) {
     assert(!channels_.contains(channel->fd()));
@@ -93,7 +93,7 @@ void PollPoller::updateChannel(Channel *channel) {
 
 void PollPoller::removeChannel(Channel *channel) {
   Poller::assertInLoopThread();
-  LOG_TRACE << "fd = " << channel->fd();
+  muduo::logTrace("fd = {}", channel->fd());
 
   assert(channels_.contains(channel->fd()));
   assert(channels_[channel->fd()] == channel);

@@ -22,21 +22,23 @@ LogFile::LogFile(string basename, std::int64_t rollSize, bool threadSafe,
 
 LogFile::~LogFile() = default;
 
-void LogFile::append(const char *logline, int len) {
+void LogFile::append(std::string_view logline) {
   std::unique_lock<std::mutex> lock;
   if (mutex_) {
     lock = std::unique_lock<std::mutex>(*mutex_);
   }
-  append_unlocked(logline, len);
+  append_unlocked(logline);
 }
 
-void LogFile::append(std::string_view logline) {
-  append(logline.data(), static_cast<int>(logline.size()));
+#if MUDUO_ENABLE_LEGACY_COMPAT
+void LogFile::append(const char *logline, int len) {
+  append(std::string_view{logline, static_cast<size_t>(len)});
 }
 
 void LogFile::append(StringPiece logline) { append(logline.as_string_view()); }
 
 void LogFile::append(StringArg logline) { append(logline.as_string_view()); }
+#endif
 
 void LogFile::flush() {
   std::unique_lock<std::mutex> lock;
@@ -46,8 +48,8 @@ void LogFile::flush() {
   file_->flush();
 }
 
-void LogFile::append_unlocked(const char *logline, int len) {
-  file_->append(logline, static_cast<size_t>(len));
+void LogFile::append_unlocked(std::string_view logline) {
+  file_->append(logline);
 
   if (file_->writtenBytes() > rollSize_) {
     rollFile();

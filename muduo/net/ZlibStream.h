@@ -1,8 +1,10 @@
 #pragma once
 
-#include "muduo/base/StringPiece.h"
 #include "muduo/base/noncopyable.h"
 #include "muduo/net/Buffer.h"
+#if MUDUO_ENABLE_LEGACY_COMPAT
+#include "muduo/base/StringPiece.h"
+#endif
 
 #include <cstdint>
 #include <string>
@@ -18,13 +20,13 @@ public:
   explicit ZlibInputStream(Buffer *output);
   ~ZlibInputStream();
 
+  [[nodiscard]] bool write(std::string_view buf);
+#if MUDUO_ENABLE_LEGACY_COMPAT
   [[nodiscard]] bool write(StringPiece buf);
-  [[nodiscard]] bool write(const char *buf) { return write(StringPiece{buf}); }
-  [[nodiscard]] bool write(std::string_view buf) {
-    return write(StringPiece{buf});
-  }
+  [[nodiscard]] bool write(const char *buf) { return write(std::string_view{buf}); }
+#endif
   [[nodiscard]] bool write(const std::string &buf) {
-    return write(StringPiece{buf});
+    return write(std::string_view{buf});
   }
   [[nodiscard]] bool write(Buffer *input);
   [[nodiscard]] bool finish();
@@ -51,13 +53,13 @@ public:
   explicit ZlibOutputStream(Buffer *output);
   ~ZlibOutputStream();
 
+  [[nodiscard]] bool write(std::string_view buf);
+#if MUDUO_ENABLE_LEGACY_COMPAT
   [[nodiscard]] bool write(StringPiece buf);
-  [[nodiscard]] bool write(const char *buf) { return write(StringPiece{buf}); }
-  [[nodiscard]] bool write(std::string_view buf) {
-    return write(StringPiece{buf});
-  }
+  [[nodiscard]] bool write(const char *buf) { return write(std::string_view{buf}); }
+#endif
   [[nodiscard]] bool write(const std::string &buf) {
-    return write(StringPiece{buf});
+    return write(std::string_view{buf});
   }
   [[nodiscard]] bool write(Buffer *input);
   [[nodiscard]] bool finish();

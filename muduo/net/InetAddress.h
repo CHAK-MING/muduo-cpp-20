@@ -1,8 +1,10 @@
 #pragma once
 
-#include "muduo/base/StringPiece.h"
 #include "muduo/base/Types.h"
 #include "muduo/base/copyable.h"
+#if MUDUO_ENABLE_LEGACY_COMPAT
+#include "muduo/base/StringPiece.h"
+#endif
 
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -15,10 +17,14 @@ public:
   explicit InetAddress(uint16_t port = 0, bool loopbackOnly = false,
                        bool ipv6 = false);
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
   InetAddress(StringArg ip, uint16_t port, bool ipv6 = false);
   InetAddress(const char *ip, uint16_t port, bool ipv6 = false);
+#endif
   InetAddress(std::string_view ip, uint16_t port, bool ipv6 = false);
+#if MUDUO_ENABLE_LEGACY_COMPAT
   InetAddress(const string &ip, uint16_t port, bool ipv6 = false);
+#endif
 
   explicit InetAddress(const sockaddr_in &addr);
   explicit InetAddress(const sockaddr_in6 &addr);
@@ -39,12 +45,16 @@ public:
   [[nodiscard]] uint32_t ipv4NetEndian() const;
   [[nodiscard]] uint16_t portNetEndian() const;
 
+#if MUDUO_ENABLE_LEGACY_COMPAT
   [[nodiscard]] static bool resolve(StringArg hostname, InetAddress *result);
   [[nodiscard]] static bool resolve(StringArg hostname, InetAddress *result,
                                     sa_family_t family);
   [[nodiscard]] static bool resolve(const char *hostname, InetAddress *result);
+#endif
   [[nodiscard]] static bool resolve(std::string_view hostname,
                                     InetAddress *result);
+  [[nodiscard]] static bool resolve(std::string_view hostname,
+                                    InetAddress *result, sa_family_t family);
 
   void setScopeId(uint32_t scope_id);
 

@@ -22,10 +22,12 @@ struct Derived : Base {
 } // namespace
 
 TEST(Types, MemZeroPointerAndSpan) {
-  std::array<char, 8> buf{'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'};
-  muduo::memZero(buf.data(), buf.size());
-  for (char c : buf) {
-    EXPECT_EQ(c, '\0');
+  std::array<std::byte, 8> buf{
+      std::byte{'a'}, std::byte{'b'}, std::byte{'c'}, std::byte{'d'},
+      std::byte{'e'}, std::byte{'f'}, std::byte{'g'}, std::byte{'h'}};
+  muduo::memZero(std::span<std::byte>(buf));
+  for (std::byte c : buf) {
+    EXPECT_EQ(c, std::byte{0});
   }
 
   std::array<std::byte, 4> bytes{

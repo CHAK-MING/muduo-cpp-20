@@ -21,7 +21,8 @@ class PeriodicTimer {
 public:
   template <typename F>
     requires std::invocable<std::decay_t<F> &>
-  PeriodicTimer(muduo::net::EventLoop *loop, double intervalSeconds, F &&cb)
+  PeriodicTimer(muduo::net::EventLoop *loop,
+                std::chrono::microseconds interval, F &&cb)
       : loop_(loop),
         timerfd_(::timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC)),
         timerChannel_(loop, timerfd_),
@@ -32,7 +33,7 @@ public:
     timerChannel_.setReadCallback([this](muduo::Timestamp) { handleRead(); });
     timerChannel_.enableReading();
     active_ = true;
-    reset(intervalSeconds);
+    reset(interval);
   }
 
   ~PeriodicTimer() {
@@ -48,14 +49,15 @@ public:
   [[nodiscard]] int fd() const { return timerfd_; }
 
 private:
-  void reset(double intervalSeconds) {
+  void reset(std::chrono::microseconds interval) {
     itimerspec spec{};
-    const auto sec = static_cast<time_t>(intervalSeconds);
-    const auto nsec = static_cast<long>((intervalSeconds - static_cast<double>(sec)) * 1e9);
-    spec.it_interval.tv_sec = sec;
-    spec.it_interval.tv_nsec = nsec;
-    spec.it_value.tv_sec = sec;
-    spec.it_value.tv_nsec = nsec;
+    const auto sec = std::chrono::duration_cast<std::chrono::seconds>(interval);
+    const auto nsec =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(interval - sec);
+    spec.it_interval.tv_sec = static_cast<time_t>(sec.count());
+    spec.it_interval.tv_nsec = static_cast<long>(nsec.count());
+    spec.it_value.tv_sec = static_cast<time_t>(sec.count());
+    spec.it_value.tv_nsec = static_cast<long>(nsec.count());
     (void)::timerfd_settime(timerfd_, 0, &spec, nullptr);
   }
 
@@ -136,7 +138,7 @@ TEST_F(ChannelTest, PeriodicTimerAndRunEveryFireTogether) {
   std::atomic<int> periodicCount{0};
   std::atomic<int> everyCount{0};
 
-  PeriodicTimer periodic(&loop, 0.02, [&] {
+  PeriodicTimer periodic(&loop, 20ms, [&] {
     periodicCount.fetch_add(1, std::memory_order_relaxed);
     if (periodicCount.load(std::memory_order_relaxed) >= 3 &&
         everyCount.load(std::memory_order_relaxed) >= 3) {
