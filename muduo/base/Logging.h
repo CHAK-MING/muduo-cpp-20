@@ -2,9 +2,9 @@
 
 #include "muduo/base/LogStream.h"
 
-#include <cstdint>
-#include <chrono>
 #include <cerrno>
+#include <chrono>
+#include <cstdint>
 #include <optional>
 #include <source_location>
 #include <string_view>
@@ -34,9 +34,48 @@ public:
   static constexpr LogLevel ERROR = LogLevel::ERROR;
   static constexpr LogLevel FATAL = LogLevel::FATAL;
 
+  class SourceFile {
+  public:
+    template <int N> explicit SourceFile(const char (&arr)[N]) noexcept {
+      std::string_view full{arr, static_cast<size_t>(N - 1)};
+      const auto pos = full.find_last_of('/');
+      if (pos == std::string_view::npos) {
+        data_ = arr;
+        size_ = N - 1;
+      } else {
+        data_ = arr + static_cast<std::ptrdiff_t>(pos + 1);
+        size_ = static_cast<int>(full.size() - pos - 1);
+      }
+    }
+
+    explicit SourceFile(const char *filename) noexcept {
+      if (filename == nullptr) {
+        data_ = "unknown";
+        size_ = 7;
+        return;
+      }
+      std::string_view full{filename};
+      const auto pos = full.find_last_of('/');
+      if (pos == std::string_view::npos) {
+        data_ = filename;
+        size_ = static_cast<int>(full.size());
+      } else {
+        data_ = filename + static_cast<std::ptrdiff_t>(pos + 1);
+        size_ = static_cast<int>(full.size() - pos - 1);
+      }
+    }
+
+    const char *data_{"unknown"};
+    int size_{7};
+  };
+
   explicit Logger(LogLevel level = LogLevel::INFO, int savedErrno = 0,
                   std::string_view func = {},
                   std::source_location loc = std::source_location::current());
+  Logger(SourceFile file, int line);
+  Logger(SourceFile file, int line, LogLevel level);
+  Logger(SourceFile file, int line, LogLevel level, const char *func);
+  Logger(SourceFile file, int line, bool toAbort);
   ~Logger();
 
   Logger(const Logger &) = delete;
@@ -58,13 +97,15 @@ private:
   public:
     Impl(LogLevel level, int savedErrno, std::string_view func,
          std::source_location loc);
+    Impl(LogLevel level, int savedErrno, std::string_view func,
+         const char *basename, std::uint_least32_t line) noexcept;
 
     void finish();
 
     std::chrono::sys_time<std::chrono::microseconds> time_;
     LogStream stream_;
     LogLevel level_;
-    std::source_location loc_;
+    std::uint_least32_t line_;
     const char *basename_;
   };
 
@@ -212,14 +253,14 @@ inline void logFatal(std::format_string<Args...> fmt, Args &&...args) {
 
 template <typename... Args>
 inline void logSysErr(std::format_string<Args...> fmt, Args &&...args) {
-  logFmtErr(Logger::LogLevel::ERROR, errno, std::source_location::current(), fmt,
-            std::forward<Args>(args)...);
+  logFmtErr(Logger::LogLevel::ERROR, errno, std::source_location::current(),
+            fmt, std::forward<Args>(args)...);
 }
 
 template <typename... Args>
 inline void logSysFatal(std::format_string<Args...> fmt, Args &&...args) {
-  logFmtErr(Logger::LogLevel::FATAL, errno, std::source_location::current(), fmt,
-            std::forward<Args>(args)...);
+  logFmtErr(Logger::LogLevel::FATAL, errno, std::source_location::current(),
+            fmt, std::forward<Args>(args)...);
 }
 
 template <typename T>
@@ -231,54 +272,71 @@ T *CheckNotNull(const char *names, T *ptr,
   return ptr;
 }
 
+template <typename T>
+T *CheckNotNull(Logger::SourceFile file, int line, const char *names, T *ptr) {
+  if (ptr == nullptr) {
+    Logger(file, line, Logger::LogLevel::FATAL).stream() << names;
+  }
+  return ptr;
+}
+
+template <typename T>
+T *CheckNotNull(const char *file, int line, const char *names, T *ptr) {
+  return CheckNotNull(Logger::SourceFile(file), line, names, ptr);
+}
+
 #ifndef MUDUO_DISABLE_LEGACY_LOG_MACROS
 #define LOG_TRACE                                                              \
-  if (!::muduo::shouldLog(::muduo::Logger::LogLevel::TRACE))                  \
+  if (!::muduo::shouldLog(::muduo::Logger::LogLevel::TRACE))                   \
     ;                                                                          \
   else                                                                         \
     ::muduo::logTrace()
 
 #define LOG_DEBUG                                                              \
-  if (!::muduo::shouldLog(::muduo::Logger::LogLevel::DEBUG))                  \
+  if (!::muduo::shouldLog(::muduo::Logger::LogLevel::DEBUG))                   \
     ;                                                                          \
   else                                                                         \
     ::muduo::logDebug()
 
 #define LOG_INFO                                                               \
-  if (!::muduo::shouldLog(::muduo::Logger::LogLevel::INFO))                   \
+  if (!::muduo::shouldLog(::muduo::Logger::LogLevel::INFO))                    \
     ;                                                                          \
   else                                                                         \
     ::muduo::logInfo()
 
 #define LOG_WARN                                                               \
-  if (!::muduo::shouldLog(::muduo::Logger::LogLevel::WARN))                   \
+  if (!::muduo::shouldLog(::muduo::Logger::LogLevel::WARN))                    \
     ;                                                                          \
   else                                                                         \
     ::muduo::logWarn()
 
 #define LOG_ERROR                                                              \
-  if (!::muduo::shouldLog(::muduo::Logger::LogLevel::ERROR))                  \
+  if (!::muduo::shouldLog(::muduo::Logger::LogLevel::ERROR))                   \
     ;                                                                          \
   else                                                                         \
     ::muduo::logError()
 
 #define LOG_FATAL                                                              \
-  if (!::muduo::shouldLog(::muduo::Logger::LogLevel::FATAL))                  \
+  if (!::muduo::shouldLog(::muduo::Logger::LogLevel::FATAL))                   \
     ;                                                                          \
   else                                                                         \
     ::muduo::logFatal()
 
 #define LOG_SYSERR                                                             \
-  if (!::muduo::shouldLog(::muduo::Logger::LogLevel::ERROR))                  \
+  if (!::muduo::shouldLog(::muduo::Logger::LogLevel::ERROR))                   \
     ;                                                                          \
   else                                                                         \
     ::muduo::logSysErr()
 
 #define LOG_SYSFATAL                                                           \
-  if (!::muduo::shouldLog(::muduo::Logger::LogLevel::FATAL))                  \
+  if (!::muduo::shouldLog(::muduo::Logger::LogLevel::FATAL))                   \
     ;                                                                          \
   else                                                                         \
     ::muduo::logSysFatal()
 #endif
+
+#define CHECK_NOTNULL(val)                                                     \
+  ::muduo::CheckNotNull(__FILE__, __LINE__, "'" #val "' Must be non NULL",     \
+                        (val))
 
 } // namespace muduo

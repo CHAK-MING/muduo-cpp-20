@@ -51,6 +51,12 @@ constexpr To down_cast(From *f) {
 
 namespace detail {
 
+#if defined(__cpp_lib_move_only_function) &&                                   \
+    __cpp_lib_move_only_function >= 202110L
+template <typename Signature>
+using MoveOnlyFunction = std::move_only_function<Signature>;
+#else
+
 template <typename Signature> class MoveOnlyFunction;
 
 template <typename R, typename... Args> class MoveOnlyFunction<R(Args...)> {
@@ -74,21 +80,21 @@ public:
     return static_cast<bool>(callable_);
   }
 
-  R operator()(Args... args) {
+  R operator()(Args... args) const {
     assert(callable_ != nullptr);
-    return callable_->invoke(std::forward<Args>(args)...);
+    return callable_->call(std::forward<Args>(args)...);
   }
 
 private:
   struct Concept {
     virtual ~Concept() = default;
-    virtual R invoke(Args &&...args) = 0;
+    virtual R call(Args &&...args) const = 0;
   };
 
   template <typename F> struct Model final : Concept {
     explicit Model(F f) : function_(std::move(f)) {}
 
-    R invoke(Args &&...args) override {
+    R call(Args &&...args) const override {
       if constexpr (std::is_void_v<R>) {
         std::invoke(function_, std::forward<Args>(args)...);
       } else {
@@ -96,11 +102,13 @@ private:
       }
     }
 
-    F function_;
+    mutable F function_;
   };
 
   std::unique_ptr<Concept> callable_;
 };
+
+#endif
 
 } // namespace detail
 

@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 #include <source_location>
+#include <string>
 
 TEST(Exception, StoresMessageAndStack) {
   muduo::Exception ex("oops");
@@ -35,4 +36,11 @@ TEST(Exception, ThrowCatch) {
     EXPECT_STREQ(ex.what(), "boom");
     EXPECT_FALSE(ex.stackTraceView().empty());
   }
+}
+
+TEST(Exception, LegacyStringCtor) {
+  const std::string msg = "legacy-string";
+  const muduo::Exception ex(msg);
+  EXPECT_STREQ(ex.what(), "legacy-string");
+  EXPECT_FALSE(ex.stackTraceView().empty());
 }

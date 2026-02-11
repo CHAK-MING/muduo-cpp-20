@@ -3,6 +3,14 @@
 
 using namespace muduo;
 
+Exception::Exception(string msg)
+    : Exception(std::string_view{msg}, StackTraceMode::Capture,
+                std::source_location::current()) {}
+
+Exception::Exception(const char *msg)
+    : Exception(msg == nullptr ? std::string_view{} : std::string_view{msg},
+                StackTraceMode::Capture, std::source_location::current()) {}
+
 Exception::Exception(std::string_view msg)
     : Exception(msg, StackTraceMode::Capture, std::source_location::current()) {}
 

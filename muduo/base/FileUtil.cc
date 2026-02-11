@@ -6,6 +6,7 @@
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
+#include <format>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -48,7 +49,10 @@ void FileUtil::AppendFile::append(const char *logline, const size_t len) {
     if (n == 0) {
       const int err = ferror(fp_);
       if (err != 0) {
-        std::fprintf(stderr, "AppendFile::append() failed %s\n", strerror_tl(err));
+        const auto msg =
+            std::format("AppendFile::append() failed {}\n", strerror_tl(err));
+        const auto writtenErr = std::fwrite(msg.data(), 1, msg.size(), stderr);
+        (void)writtenErr;
       }
       break;
     }

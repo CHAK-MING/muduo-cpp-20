@@ -3,6 +3,7 @@
 #include "muduo/base/Types.h"
 
 #include <chrono>
+#include <compare>
 #include <ctime>
 #include <utility>
 
@@ -64,12 +65,8 @@ public:
     return toJulianDay(day_);
   }
 
-  [[nodiscard]] constexpr auto operator<=>(const Date &rhs) const {
-    return day_ <=> rhs.day_;
-  }
-  [[nodiscard]] constexpr bool operator==(const Date &rhs) const {
-    return day_ == rhs.day_;
-  }
+  [[nodiscard]] constexpr auto operator<=>(const Date &rhs) const = default;
+  [[nodiscard]] constexpr bool operator==(const Date &rhs) const = default;
 
 private:
   static constexpr int getJulianDayNumber(int year, int month, int day) {

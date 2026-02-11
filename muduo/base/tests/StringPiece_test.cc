@@ -10,13 +10,41 @@
 TEST(StringPiece, BasicOperations) {
   muduo::StringPiece piece("hello world");
   EXPECT_EQ(piece.size(), 11U);
+  EXPECT_EQ(piece.sizeInt(), 11);
   EXPECT_FALSE(piece.empty());
+  EXPECT_EQ(piece[1], 'e');
   EXPECT_EQ(piece.substr(0, 5).as_string(), "hello");
 
   piece.remove_prefix(6);
   EXPECT_EQ(piece.as_string(), "world");
   piece.remove_suffix(3);
   EXPECT_EQ(piece.as_string(), "wo");
+
+  std::string copied;
+  piece.CopyToString(&copied);
+  EXPECT_EQ(copied, "wo");
+}
+
+TEST(StringPiece, LegacyCompatMethodsAndComparisons) {
+  muduo::StringPiece a("abc");
+  muduo::StringPiece b;
+  b.set("abcdef", 6);
+  EXPECT_TRUE(b.starts_with(a));
+  EXPECT_TRUE(b.starts_with('a'));
+  EXPECT_TRUE(b.starts_with("abc"));
+
+  const unsigned char raw[] = {'x', 'y', 'z'};
+  muduo::StringPiece c;
+  c.set(raw, 3);
+  EXPECT_EQ(c.as_string(), "xyz");
+
+  muduo::StringPiece d("abd");
+  EXPECT_TRUE(a < d);
+  EXPECT_TRUE(a <= d);
+  EXPECT_TRUE(d > a);
+  EXPECT_TRUE(d >= a);
+  EXPECT_TRUE(a == muduo::StringPiece("abc"));
+  EXPECT_TRUE(a != d);
 }
 
 TEST(StringArg, AcceptsLegacyInputs) {
@@ -39,4 +67,3 @@ TEST(StringArg, AcceptsLegacyInputs) {
 TEST(StringPiece, DisabledByMacro) { SUCCEED(); }
 
 #endif
-

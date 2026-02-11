@@ -105,8 +105,6 @@ TEST(AsyncLogging, MultiThreadStressNoLoss) {
   for (auto &worker : workers) {
     worker.join();
   }
-
-  std::this_thread::sleep_for(150ms);
   logger.stop();
 
   const auto files = findLogFiles(basename);
@@ -120,6 +118,35 @@ TEST(AsyncLogging, MultiThreadStressNoLoss) {
   EXPECT_EQ(count, static_cast<size_t>(kThreads * kPerThread));
 
   for (const auto &path : files) {
+    std::filesystem::remove(path);
+  }
+}
+
+TEST(AsyncLogging, StartStopIdempotentAndStateVisible) {
+  const std::string basename =
+      std::format("muduo_asynclog_state_{}_{}", ::getpid(),
+                  std::chrono::steady_clock::now().time_since_epoch().count());
+  for (const auto &path : findLogFiles(basename)) {
+    std::filesystem::remove(path);
+  }
+
+  muduo::AsyncLogging logger(basename, 1024 * 1024, 1);
+  EXPECT_FALSE(logger.started());
+
+  logger.start();
+  EXPECT_TRUE(logger.started());
+  logger.start();
+  EXPECT_TRUE(logger.started());
+
+  logger.append("state-check\n", 12);
+  std::this_thread::sleep_for(std::chrono::milliseconds(30));
+
+  logger.stop();
+  EXPECT_FALSE(logger.started());
+  logger.stop();
+  EXPECT_FALSE(logger.started());
+
+  for (const auto &path : findLogFiles(basename)) {
     std::filesystem::remove(path);
   }
 }

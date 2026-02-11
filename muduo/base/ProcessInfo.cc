@@ -185,18 +185,17 @@ int ProcessInfo::numThreads() {
   constexpr std::string_view kThreadsPrefix = "Threads:";
   for (const auto lineRange :
        std::string_view(status) | std::views::split('\n')) {
-    const auto *first = std::ranges::begin(lineRange);
-    const auto *last = std::ranges::end(lineRange);
-    if (first == last) {
+    if (std::ranges::empty(lineRange)) {
       continue;
     }
-    const auto len = static_cast<size_t>(std::ranges::distance(first, last));
-    const std::string_view line(&*first, len);
-    if (!line.starts_with(kThreadsPrefix)) {
+    if (const std::string_view line(std::ranges::data(lineRange),
+                                    std::ranges::size(lineRange));
+        !line.starts_with(kThreadsPrefix)) {
       continue;
-    }
-    if (auto parsed = parseInt(skipSpace(line.substr(kThreadsPrefix.size())))) {
-      return *parsed;
+    } else if (const auto parsed =
+                   parseInt(skipSpace(line.substr(kThreadsPrefix.size())));
+               parsed.has_value()) {
+        return *parsed;
     }
     return 0;
   }
@@ -213,7 +212,7 @@ std::vector<pid_t> ProcessInfo::threads() {
     }
     const string name = entry.path().filename().string();
     if (isNumericName(name)) {
-      if (auto tid = parseInt(name); tid && *tid > 0) {
+      if (auto tid = parseInt(name); tid.has_value() && *tid > 0) {
         result.emplace_back(static_cast<pid_t>(*tid));
       }
     }

@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstdint>
+#include <pthread.h>
 #include <string_view>
 
 namespace muduo::CurrentThread {
@@ -30,6 +31,7 @@ void setName(const char *name);
 }
 [[nodiscard]] inline int tidStringLength() { return t_tidStringLength; }
 [[nodiscard]] inline const char *name() { return t_threadName; }
+[[nodiscard]] inline pthread_t pthreadId() noexcept { return ::pthread_self(); }
 
 [[nodiscard]] bool isMainThread();
 void sleepUsec(int64_t usec);

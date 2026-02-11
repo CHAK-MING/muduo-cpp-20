@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <cerrno>
+#include <filesystem>
 #include <string>
 
 TEST(FileUtil, ReadFileBasicCases) {
@@ -28,6 +29,8 @@ TEST(FileUtil, ReadFileBasicCases) {
 
 TEST(FileUtil, AppendFileWritesBytes) {
   const std::string path = "/tmp/muduo_fileutil_test.log";
+  std::error_code ec;
+  std::filesystem::remove(path, ec);
   muduo::FileUtil::AppendFile file{std::string_view(path)};
 
   file.append("abc", 3);
@@ -43,4 +46,5 @@ TEST(FileUtil, AppendFileWritesBytes) {
   const int err = muduo::FileUtil::readFile(path, 1024, &content, &size);
   EXPECT_EQ(err, 0);
   EXPECT_GE(content.size(), static_cast<size_t>(12));
+  std::filesystem::remove(path, ec);
 }

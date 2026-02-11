@@ -104,7 +104,7 @@ public:
 
   LogStream &operator<<(const char *str) {
     if (str != nullptr) {
-      buffer_.append(str, std::strlen(str));
+      buffer_.append(str, std::char_traits<char>::length(str));
     } else {
       buffer_.append("(null)", 6);
     }
@@ -169,10 +169,21 @@ private:
 
   template <std::floating_point T> LogStream &formatFloating(T v) {
     if (buffer_.avail() >= kMaxNumericSize) {
+      char *cur = buffer_.current();
+      char *end = cur + buffer_.avail();
+
+      if constexpr (!std::same_as<std::remove_cvref_t<T>, long double>) {
+        auto [ptr, ec] = std::to_chars(cur, end, static_cast<double>(v),
+                                       std::chars_format::general, 12);
+        if (ec == std::errc{}) {
+          buffer_.add(static_cast<size_t>(ptr - cur));
+          return *this;
+        }
+      }
+
       const auto cap = static_cast<size_t>(buffer_.avail());
       auto out =
-          std::format_to_n(buffer_.current(), static_cast<std::ptrdiff_t>(cap),
-                           "{:.12g}", static_cast<double>(v));
+          std::format_to_n(cur, static_cast<std::ptrdiff_t>(cap), "{:.12g}", v);
       const size_t written = std::min(static_cast<size_t>(out.size), cap);
       buffer_.add(written);
     }

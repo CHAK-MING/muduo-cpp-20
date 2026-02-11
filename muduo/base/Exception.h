@@ -13,6 +13,8 @@ class Exception : public std::exception {
 public:
   enum class StackTraceMode : std::uint8_t { Capture, Skip };
 
+  explicit Exception(string what);
+  explicit Exception(const char *what);
   explicit Exception(std::string_view what);
   Exception(std::string_view what, std::source_location where) noexcept;
   Exception(std::string_view what, StackTraceMode mode,

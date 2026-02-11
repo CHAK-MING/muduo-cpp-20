@@ -15,19 +15,19 @@ std::mutex g_logMutex;
 std::string g_logOutput;
 
 void testOutput(const char* msg, int len) {
-  std::lock_guard<std::mutex> lock(g_logMutex);
+  std::scoped_lock lock(g_logMutex);
   g_logOutput.append(msg, static_cast<size_t>(len));
 }
 
 void testFlush() {}
 
 void clearLogOutput() {
-  std::lock_guard<std::mutex> lock(g_logMutex);
+  std::scoped_lock lock(g_logMutex);
   g_logOutput.clear();
 }
 
 std::string snapshotLogOutput() {
-  std::lock_guard<std::mutex> lock(g_logMutex);
+  std::scoped_lock lock(g_logMutex);
   return g_logOutput;
 }
 
@@ -134,4 +134,21 @@ TEST(Logging, MultiThreadStressNoLoss) {
   const std::string out = snapshotLogOutput();
   const size_t count = countOccurrences(out, "mt-thread=");
   EXPECT_EQ(count, static_cast<size_t>(kThreads * kPerThread));
+}
+
+TEST(Logging, LegacySourceFileCtorAndCheckNotNull) {
+  clearLogOutput();
+  muduo::Logger::setOutput(testOutput);
+  muduo::Logger::setFlush(testFlush);
+  muduo::Logger::setLogLevel(muduo::Logger::LogLevel::INFO);
+
+  muduo::Logger(muduo::Logger::SourceFile(__FILE__), __LINE__).stream()
+      << "legacy-ctor";
+
+  int value = 42;
+  int *const ptr = CHECK_NOTNULL(&value);
+  EXPECT_EQ(ptr, &value);
+
+  const std::string out = snapshotLogOutput();
+  EXPECT_NE(out.find("legacy-ctor"), std::string::npos);
 }

@@ -26,13 +26,16 @@ public:
 
   void start();
   void stop();
+  [[nodiscard]] bool started() const noexcept {
+    return started_.load(std::memory_order_acquire);
+  }
   [[nodiscard]] size_t shardCount() const noexcept { return shardCount_; }
 
 private:
   static constexpr size_t kCacheLineSize = 64;
 
   void threadFunc(std::stop_token stopToken);
-  [[nodiscard]] size_t shardIndex() const;
+  [[nodiscard]] size_t shardIndex() const noexcept;
 
   using Buffer = muduo::detail::FixedBuffer<muduo::detail::kLargeBuffer>;
   using BufferVector = std::vector<std::unique_ptr<Buffer>>;

@@ -9,6 +9,8 @@
 #include <chrono>
 #include <format>
 #include <iostream>
+#include <iterator>
+#include <ranges>
 
 using namespace muduo;
 
@@ -48,7 +50,7 @@ AsyncLogging::AsyncLogging(string basename, std::int64_t rollSize,
 }
 
 AsyncLogging::BufferPtr AsyncLogging::acquireBuffer() {
-  std::lock_guard<std::mutex> lock(poolMutex_);
+  std::scoped_lock lock(poolMutex_);
   if (!globalPool_.empty()) {
     BufferPtr buf = std::move(globalPool_.back());
     globalPool_.pop_back();
@@ -63,7 +65,7 @@ void AsyncLogging::recycleBuffer(BufferPtr buffer) {
     return;
   }
   buffer->reset();
-  std::lock_guard<std::mutex> lock(poolMutex_);
+  std::scoped_lock lock(poolMutex_);
   if (globalPool_.size() < kGlobalPoolMax) {
     globalPool_.emplace_back(std::move(buffer));
   }
@@ -75,7 +77,7 @@ AsyncLogging::~AsyncLogging() {
   }
 }
 
-size_t AsyncLogging::shardIndex() const {
+size_t AsyncLogging::shardIndex() const noexcept {
   thread_local size_t cached =
       static_cast<size_t>(muduo::CurrentThread::tid()) & shardMask_;
   return cached;
@@ -85,7 +87,7 @@ void AsyncLogging::append(const char *logline, int len) {
   auto &shard = shards_.at(shardIndex());
   bool wakeup = false;
   {
-    std::lock_guard<std::mutex> lock(shard.mutex);
+    std::scoped_lock lock(shard.mutex);
     if (shard.currentBuffer->avail() >= len) {
       shard.currentBuffer->append(logline, static_cast<size_t>(len));
       return;
@@ -107,8 +109,8 @@ void AsyncLogging::append(const char *logline, int len) {
 }
 
 void AsyncLogging::start() {
-  bool expected = false;
-  if (!started_.compare_exchange_strong(expected, true,
+  if (bool expected = false;
+      !started_.compare_exchange_strong(expected, true,
                                         std::memory_order_release,
                                         std::memory_order_relaxed)) {
     return;
@@ -119,8 +121,8 @@ void AsyncLogging::start() {
 }
 
 void AsyncLogging::stop() {
-  bool expected = true;
-  if (!started_.compare_exchange_strong(expected, false,
+  if (bool expected = true;
+      !started_.compare_exchange_strong(expected, false,
                                         std::memory_order_acq_rel,
                                         std::memory_order_relaxed)) {
     return;
@@ -145,7 +147,7 @@ void AsyncLogging::threadFunc(std::stop_token stopToken) {
 
   auto collect = [&]() {
     for (auto &shard : shards_) {
-      std::lock_guard<std::mutex> lock(shard.mutex);
+      std::scoped_lock lock(shard.mutex);
 
       // If current buffer has data, move it to shard.buffers
       if (shard.currentBuffer->length() > 0) {
@@ -175,9 +177,7 @@ void AsyncLogging::threadFunc(std::stop_token stopToken) {
 
       // Move accumulated buffers from shard to local write queue
       if (!shard.buffers.empty()) {
-        buffersToWrite.insert(buffersToWrite.end(),
-                              std::make_move_iterator(shard.buffers.begin()),
-                              std::make_move_iterator(shard.buffers.end()));
+        std::ranges::move(shard.buffers, std::back_inserter(buffersToWrite));
         shard.buffers.clear();
       }
     }
@@ -210,12 +210,14 @@ void AsyncLogging::threadFunc(std::stop_token stopToken) {
       std::cerr.write(dropped.data(), static_cast<std::streamsize>(dropped.size()));
       std::cerr.flush();
       output.append(dropped);
-      buffersToWrite.erase(buffersToWrite.begin() + 2, buffersToWrite.end());
+      buffersToWrite.erase(std::ranges::next(buffersToWrite.begin(), 2),
+                           buffersToWrite.end());
     }
 
-    for (const auto &buffer : buffersToWrite) {
-      output.append(buffer->toStringView());
-    }
+    std::ranges::for_each(buffersToWrite,
+                          [&output](const BufferPtr &buffer) {
+                            output.append(buffer->toStringView());
+                          });
 
     output.flush();
 
@@ -224,25 +226,25 @@ void AsyncLogging::threadFunc(std::stop_token stopToken) {
       const size_t available = buffersToWrite.size();
       const size_t toMove = std::min(needed, available);
 
-      spareBuffers.insert(
-          spareBuffers.end(), std::make_move_iterator(buffersToWrite.begin()),
-          std::make_move_iterator(buffersToWrite.begin() + toMove));
+      auto src = std::ranges::subrange(
+          buffersToWrite.begin(), buffersToWrite.begin() + toMove);
+      std::ranges::move(src, std::back_inserter(spareBuffers));
     }
     buffersToWrite.clear();
 
   }
 
   collect();
-  for (const auto &buffer : buffersToWrite) {
+  std::ranges::for_each(buffersToWrite, [&output](const BufferPtr &buffer) {
     output.append(buffer->toStringView());
-  }
+  });
 
   output.flush();
 
-  for (auto &buf : spareBuffers) {
+  std::ranges::for_each(spareBuffers, [this](BufferPtr &buf) {
     recycleBuffer(std::move(buf));
-  }
-  for (auto &buf : buffersToWrite) {
+  });
+  std::ranges::for_each(buffersToWrite, [this](BufferPtr &buf) {
     recycleBuffer(std::move(buf));
-  }
+  });
 }

@@ -85,13 +85,14 @@ const char *errnoFallback(int savedErrno) {
 }
 
 Logger::LogLevel initLogLevel() {
+  using enum Logger::LogLevel;
   if (::getenv("MUDUO_LOG_TRACE") != nullptr) {
-    return Logger::LogLevel::TRACE;
+    return TRACE;
   }
   if (::getenv("MUDUO_LOG_DEBUG") != nullptr) {
-    return Logger::LogLevel::DEBUG;
+    return DEBUG;
   }
-  return Logger::LogLevel::INFO;
+  return INFO;
 }
 
 const std::array<const char *,
@@ -128,14 +129,19 @@ const char *strerror_tl(int savedErrno) {
 
 Logger::Impl::Impl(LogLevel level, int savedErrno, std::string_view func,
                    std::source_location loc)
-    : level_(level), loc_(loc), basename_(cachedBasename(loc.file_name())) {
+    : Impl(level, savedErrno, func, cachedBasename(loc.file_name()),
+           loc.line()) {}
+
+Logger::Impl::Impl(LogLevel level, int savedErrno, std::string_view func,
+                   const char *basename, std::uint_least32_t line) noexcept
+    : level_(level), line_(line), basename_(cachedBasename(basename)) {
 
   const auto nowTp = std::chrono::time_point_cast<std::chrono::microseconds>(
       std::chrono::system_clock::now());
   time_ = nowTp;
   const auto microsSinceEpoch = nowTp.time_since_epoch().count();
-  const auto seconds = static_cast<time_t>(microsSinceEpoch / 1000000);
-  int us = static_cast<int>(microsSinceEpoch % 1000000);
+  const auto seconds = microsSinceEpoch / 1000000;
+  const auto us = static_cast<int>(microsSinceEpoch % 1000000);
 
   if (seconds != t_lastSecond) {
     t_lastSecond = seconds;
@@ -198,7 +204,7 @@ void Logger::Impl::finish() {
   };
   thread_local SuffixCache cache{};
 
-  const auto line = loc_.line();
+  const auto line = line_;
   if (cache.basename != basename_ || cache.line != line) {
     size_t pos = 0;
     constexpr std::string_view kPrefix = " - ";
@@ -220,8 +226,9 @@ void Logger::Impl::finish() {
 
     appendRaw(kPrefix.data(), kPrefix.size());
 
-    const size_t basenameLen = std::strlen(basename_);
-    appendRaw(basename_, basenameLen);
+    const char *safeBasename = basename_ != nullptr ? basename_ : "unknown";
+    const size_t basenameLen = std::char_traits<char>::length(safeBasename);
+    appendRaw(safeBasename, basenameLen);
     appendChar(':');
 
     if (pos < cache.suffix.size()) {
@@ -251,11 +258,28 @@ Logger::Logger(LogLevel level, int savedErrno, std::string_view func,
                std::source_location loc)
     : impl_(level, savedErrno, func, loc) {}
 
+Logger::Logger(SourceFile file, int line)
+    : impl_(LogLevel::INFO, 0, {}, file.data_,
+            static_cast<std::uint_least32_t>(line)) {}
+
+Logger::Logger(SourceFile file, int line, LogLevel level)
+    : impl_(level, 0, {}, file.data_, static_cast<std::uint_least32_t>(line)) {}
+
+Logger::Logger(SourceFile file, int line, LogLevel level, const char *func)
+    : impl_(level, 0,
+            func == nullptr ? std::string_view{} : std::string_view{func},
+            file.data_, static_cast<std::uint_least32_t>(line)) {}
+
+Logger::Logger(SourceFile file, int line, bool toAbort)
+    : impl_(toAbort ? LogLevel::FATAL : LogLevel::ERROR, errno, {}, file.data_,
+            static_cast<std::uint_least32_t>(line)) {}
+
 Logger::~Logger() {
+  using enum Logger::LogLevel;
   impl_.finish();
   const LogStream::Buffer &buf(stream().buffer());
   g_output(buf.data(), buf.length());
-  if (impl_.level_ == Logger::LogLevel::FATAL) {
+  if (impl_.level_ == FATAL) {
     g_flush();
     std::abort();
   }

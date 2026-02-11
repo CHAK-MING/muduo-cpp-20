@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <future>
+#include <pthread.h>
 #include <string>
 #include <thread>
 #include <chrono>
@@ -37,4 +38,10 @@ TEST(CurrentThread, SleepUsecAndStackTrace) {
 
   const auto trace = muduo::CurrentThread::stackTrace(false);
   EXPECT_FALSE(trace.empty());
+}
+
+TEST(CurrentThread, PthreadIdMatchesSelf) {
+  EXPECT_NE(muduo::CurrentThread::pthreadId(), static_cast<pthread_t>(0));
+  EXPECT_TRUE(
+      pthread_equal(muduo::CurrentThread::pthreadId(), ::pthread_self()) != 0);
 }

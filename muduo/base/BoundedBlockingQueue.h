@@ -2,11 +2,10 @@
 
 #include "muduo/base/noncopyable.h"
 
-#include <boost/circular_buffer.hpp>
-
 #include <concepts>
 #include <condition_variable>
 #include <cstddef>
+#include <deque>
 #include <mutex>
 #include <optional>
 #include <stdexcept>
@@ -20,7 +19,7 @@ template <typename T>
 class BoundedBlockingQueue : noncopyable {
 public:
   explicit BoundedBlockingQueue(int maxSize)
-      : queue_(static_cast<size_t>(maxSize)) {
+      : maxSize_(static_cast<size_t>(maxSize)) {
     if (maxSize <= 0) {
       throw std::invalid_argument("BoundedBlockingQueue maxSize must be > 0");
     }
@@ -30,7 +29,7 @@ public:
     requires std::copy_constructible<T>
   {
     std::unique_lock<std::mutex> lock(mutex_);
-    notFull_.wait(lock, [this] { return !queue_.full(); });
+    notFull_.wait(lock, [this] { return queue_.size() < maxSize_; });
     queue_.push_back(x);
     lock.unlock();
     notEmpty_.notify_one();
@@ -38,7 +37,7 @@ public:
 
   void put(T &&x) {
     std::unique_lock<std::mutex> lock(mutex_);
-    notFull_.wait(lock, [this] { return !queue_.full(); });
+    notFull_.wait(lock, [this] { return queue_.size() < maxSize_; });
     queue_.push_back(std::move(x));
     lock.unlock();
     notEmpty_.notify_one();
@@ -46,7 +45,7 @@ public:
 
   template <typename... Args> void emplace(Args &&...args) {
     std::unique_lock<std::mutex> lock(mutex_);
-    notFull_.wait(lock, [this] { return !queue_.full(); });
+    notFull_.wait(lock, [this] { return queue_.size() < maxSize_; });
     queue_.push_back(T(std::forward<Args>(args)...));
     lock.unlock();
     notEmpty_.notify_one();
@@ -76,7 +75,7 @@ public:
   }
 
   [[nodiscard]] std::optional<T> try_take() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (queue_.empty()) {
       return std::nullopt;
     }
@@ -87,30 +86,30 @@ public:
   }
 
   [[nodiscard]] bool empty() const {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     return queue_.empty();
   }
 
   [[nodiscard]] bool full() const {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return queue_.full();
+    std::scoped_lock lock(mutex_);
+    return queue_.size() == maxSize_;
   }
 
   [[nodiscard]] size_t size() const {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     return queue_.size();
   }
 
   [[nodiscard]] size_t capacity() const {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return queue_.capacity();
+    return maxSize_;
   }
 
 private:
   mutable std::mutex mutex_;
   std::condition_variable_any notEmpty_;
   std::condition_variable_any notFull_;
-  boost::circular_buffer<T> queue_;
+  std::deque<T> queue_;
+  size_t maxSize_;
 };
 
 } // namespace muduo

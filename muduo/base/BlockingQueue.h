@@ -23,7 +23,7 @@ public:
     requires std::copy_constructible<T>
   {
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::scoped_lock lock(mutex_);
       queue_.emplace_back(x);
     }
     notEmpty_.notify_one();
@@ -31,7 +31,7 @@ public:
 
   void put(T &&x) {
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::scoped_lock lock(mutex_);
       queue_.emplace_back(std::move(x));
     }
     notEmpty_.notify_one();
@@ -39,7 +39,7 @@ public:
 
   template <typename... Args> void emplace(Args &&...args) {
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::scoped_lock lock(mutex_);
       queue_.emplace_back(std::forward<Args>(args)...);
     }
     notEmpty_.notify_one();
@@ -66,7 +66,7 @@ public:
   }
 
   [[nodiscard]] std::optional<T> try_take() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (queue_.empty()) {
       return std::nullopt;
     }
@@ -76,19 +76,19 @@ public:
   }
 
   std::deque<T> drain() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     std::deque<T> out = std::move(queue_);
     queue_.clear();
     return out;
   }
 
   [[nodiscard]] size_t size() const {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     return queue_.size();
   }
 
   [[nodiscard]] bool empty() const {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::scoped_lock lock(mutex_);
     return queue_.empty();
   }
 

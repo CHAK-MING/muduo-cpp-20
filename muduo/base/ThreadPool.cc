@@ -66,7 +66,7 @@ void ThreadPool::stop() {
       queueSlots_->release(waiting);
     }
   }
-  for (auto &worker : workers_) {
+  for (const auto &worker : workers_) {
     worker->signal.release();
   }
   for (auto &thread : threads_) {
@@ -130,10 +130,10 @@ void ThreadPool::enqueueSharded(Task &&task) {
 
   const size_t index =
       nextWorker_.fetch_add(1, std::memory_order_relaxed) % workers_.size();
-  auto &worker = workers_.at(index);
+  const auto &worker = workers_.at(index);
   bool needsWake = false;
   {
-    std::lock_guard<std::mutex> lock(worker->mutex);
+    std::scoped_lock lock(worker->mutex);
     needsWake = worker->queue.empty();
     worker->queue.emplace_back(std::move(task));
   }
@@ -149,8 +149,8 @@ std::optional<ThreadPool::Task> ThreadPool::popSharded(size_t workerIndex) {
   }
 
   auto popOwn = [this](size_t index) -> std::optional<Task> {
-    auto &worker = workers_.at(index);
-    std::lock_guard<std::mutex> lock(worker->mutex);
+    const auto &worker = workers_.at(index);
+    std::scoped_lock lock(worker->mutex);
     if (worker->queue.empty()) {
       return std::nullopt;
     }
@@ -196,14 +196,16 @@ std::optional<ThreadPool::Task> ThreadPool::popSharded(size_t workerIndex) {
 void ThreadPool::runInThread(const string &threadName, size_t workerIndex) {
   CurrentThread::setName(threadName.empty() ? "ThreadPool"
                                             : threadName.c_str());
-  ::prctl(PR_SET_NAME, CurrentThread::name());
+  const char *threadLabel = CurrentThread::name();
+  ::prctl(PR_SET_NAME, threadLabel == nullptr ? "unknown" : threadLabel);
 
   if (threadInitCallback_) {
     threadInitCallback_();
   }
 
   while (isRunning()) {
-    if (auto task = popSharded(workerIndex); task && *task) {
+    if (auto task = popSharded(workerIndex);
+        task.has_value() && static_cast<bool>(*task)) {
       (*task)();
       continue;
     }
