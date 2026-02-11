@@ -1,0 +1,21 @@
+dist: jammy
+language: cpp
+
+addons:
+  apt:
+    packages:
+      - cmake
+      - ninja-build
+      - libboost-system-dev
+      - zlib1g-dev
+      - gcc-13
+      - g++-13
+
+env:
+  global:
+    - CC=gcc-13
+    - CXX=g++-13
+
+script:
+  - ./build.sh cmake
+  - ./build.sh test

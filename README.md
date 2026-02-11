@@ -1,91 +1,129 @@
 # muduo-cpp-20
 
-`muduo-cpp-20` is a C++20 modernization of the **muduo project**.
-It keeps familiar public APIs for easier migration, while rewriting internals with modern C++20 features and concurrency primitives.
+**Version:** 0.1.0
 
-The goal is practical: preserve existing usage patterns where possible, reduce legacy complexity inside, and improve throughput on modern hardware.
+`muduo-cpp-20` is a C++20 modernization of [muduo], a high-performance C++ network library based on the Reactor model.
 
-## Build
+This project focuses on production-ready engineering.
+- Preserve muduo-style network programming semantics.
+- Modernize internals with C++20 features.
+- Maintain compatibility with existing muduo projects.
 
-### Requirements
+## Quick Start
+
+Minimal echo server setup.
+
+```cpp
+muduo::net::EventLoop loop;
+muduo::net::InetAddress addr(2007);
+muduo::net::TcpServer server(&loop, addr, "Echo");
+server.start();
+loop.loop();
+```
+
+## Requirements
 
 - CMake >= 3.16
 - C++20 compiler
   - GCC >= 13
   - Clang >= 18
-- Boost >= 1.85 (`system`)
-- Zlib
+- Linux (primary target)
+- Runtime dependency: Zlib (`libz`)
 
-### Commands
+## Build and Install
 
-```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
-```
-
-## Test
-
-Original muduo tests have been rewritten with GoogleTest, and additional coverage was added for modernized code paths.
-
-Run all tests:
+Use `build.sh` (a wrapper over `CMakePresets.json`).
 
 ```bash
-ctest --test-dir build --output-on-failure
+# Build and test.
+./build.sh all release
+
+# Build only.
+./build.sh build release
+
+# Test only.
+./build.sh test release
+
+# Install to a custom prefix.
+./build.sh install release /opt/muduo-cpp-20
 ```
 
-## Compatibility and Usage
+## Compatibility
 
-### For Existing muduo Projects
+- Existing muduo projects: core networking model and common APIs are preserved.
+- New projects: C++20-style APIs are recommended (`string_view`, `span`, and `chrono`).
+- Core library dependencies no longer require Boost.
 
-Most legacy APIs are still available, but some C++11-era wrapper components were intentionally not kept as full standalone layers (for example, old `Mutex.h` / `Atomic.h` style wrappers).
+### Installed package usage
 
-Legacy logging macros are **enabled by default**.
-
-- If you want old macro-style logging, do not define `MUDUO_DISABLE_LEGACY_LOG_MACROS`.
-
-### For New C++20 Projects
-
-Prefer modern logging APIs and disable legacy macro paths:
-
-- Define `MUDUO_DISABLE_LEGACY_LOG_MACROS=1`
-
-Example:
-
-```cpp
-muduo::logWarn("cpu={} load={:.2f}", 16, 0.73);
+```cmake
+find_package(muduo CONFIG REQUIRED)
+target_link_libraries(my_app PRIVATE muduo::muduo_net)
 ```
 
-## Removed Wrappers and Replacements
+### GitHub FetchContent usage
 
-To avoid redundant abstractions in C++20 code, several old wrappers were removed or reduced:
+```cmake
+include(FetchContent)
+FetchContent_Declare(
+  muduo_cpp20
+  GIT_REPOSITORY https://github.com/CHAK-MING/muduo-cpp-20.git
+  GIT_TAG 0.1.0
+)
+FetchContent_MakeAvailable(muduo_cpp20)
 
-- `CountDownLatch.h` -> `std::latch`
-- `Mutex.h` and related lock wrappers -> `std::mutex`, `std::condition_variable_any`
-- Legacy string adapter usage -> `std::string_view` as the default model
+target_link_libraries(my_app PRIVATE muduo_net)
+```
 
-Compatibility aliases are retained where practical, but new code should use standard C++20 types directly.
+**Note:**
+- `find_package` exports namespaced targets (`muduo::muduo_net`).
+- `FetchContent` / `add_subdirectory` uses in-tree targets (`muduo_net`).
 
-## Benchmarks (Measured)
+## Benchmark
 
-Measured on the same host/session.
+Benchmark results as of 2026-02-11 (release build, CPU affinity set to core 2 with `taskset -c 2`).
 
-| Case | Baseline (old muduo) | muduo-cpp-20 | Gain |
-|---|---:|---:|---:|
-| Logging (`nop`, single-thread hot path) | 5,026,211.69 msg/s | ~11,337,868 msg/s (`88.2 ns/op`) | **2.26x** |
-| ThreadPool (`8 workers`, `200000 tasks`, unbounded queue) | 245,041.58 tasks/s | 624,368 tasks/s | **2.55x** |
+**Environment:**
+- OS: Ubuntu 25.10
+- CPU: Intel Xeon Gold 5218 @ 2.30GHz (32 logical CPUs)
+- Compiler: GCC 15.2.0
 
-Notes:
-- Logging baseline comes from old `logging_test` (`nop` line).
-- New logging result comes from `logging_bench` (`BM_Logging_Stream`).
-- ThreadPool baseline was measured with an old-muduo-compatible micro benchmark on the same machine.
+### Base Layer
 
-### Benchmark Commands
+| Benchmark | Case | Result |
+|-----------|------|-------:|
+| `logging_bench` | `BM_Logging_Stream` (1 thread, mean/median) | `101 ns/op` (~`9.90M msg/s`) |
+| Original muduo `logging_test` | `nop` | `5,033,092.58 msg/s`, `537.06 MiB/s` |
+| Relative gain | Logging throughput | **~`+96.7%`** |
+| `threadpool_bench` | `BM_ThreadPool_Run/8/0/200000` (mean) | `437.978k tasks/s` |
+| `threadpool_bench` | `BM_ThreadPool_Run/8/1024/200000` (mean) | `394.007k tasks/s` |
+
+### Network Layer
+
+| Payload | Mean latency | Throughput | QPS |
+|--------:|-------------:|-----------:|----:|
+| 64 B | `29.0 us` | `8.209 MiB/s` | `67.251k/s` |
+| 256 B | `41.0 us` | `21.924 MiB/s` | `44.900k/s` |
+| 1024 B | `40.6 us` | `86.210 MiB/s` | `44.140k/s` |
+| 4096 B | `37.3 us` | `388.952 MiB/s` | `49.786k/s` |
+
+Network throughput remains in the same order of magnitude as original muduo.
+
+**Reproduce:**
 
 ```bash
-./build/muduo/base/tests/logging_bench --benchmark_min_time=0.3s
-./build/muduo/base/tests/threadpool_bench --benchmark_min_time=0.3s
+./build/release/muduo/net/tests/net_echo_bench
+./build/release/muduo/base/tests/threadpool_bench
+./build/release/muduo/base/tests/logging_bench
 ```
+
+## Roadmap
+
+- [ ] Rewrite and validate `examples/` for the 0.1.x to 1.0.0 transition.
+- [ ] Optimize hot paths while maintaining API compatibility.
 
 ## License
 
-MIT License
+BSD 3-Clause. See [LICENSE](LICENSE).
+
+[muduo]: https://github.com/chenshuo/muduo
